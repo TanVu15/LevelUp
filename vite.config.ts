@@ -38,7 +38,14 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    preview: {
+      // Cho phép tunnel khi test bản build thật (npm run preview).
+      allowedHosts: ['.trycloudflare.com', '.ngrok-free.app', '.ngrok.io'],
+    },
     server: {
+      // Cho phép test qua Cloudflare quick tunnel (*.trycloudflare.com) + ngrok,
+      // nếu không Vite chặn "Blocked request. This host is not allowed." (dev-only).
+      allowedHosts: ['.trycloudflare.com', '.ngrok-free.app', '.ngrok.io'],
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
