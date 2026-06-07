@@ -41,7 +41,9 @@ export default function PWAInstallPrompt() {
   return (
     <div
       className="fixed left-1/2 -translate-x-1/2 z-50 max-w-sm w-[calc(100%-2rem)]"
-      style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+      // Sit above the mobile bottom tab bar (~4.5rem) so they don't overlap; on
+      // desktop there's no bar but a slightly higher toast is fine.
+      style={{ bottom: 'calc(4.75rem + env(safe-area-inset-bottom))' }}
     >
       <div className="bg-zinc-900 border border-orange-600/30 rounded-xl p-4 shadow-2xl shadow-black/60 flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-orange-600 flex items-center justify-center flex-shrink-0 font-black italic text-black text-lg">L</div>

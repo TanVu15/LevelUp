@@ -638,13 +638,11 @@ export default function App() {
 
       <AppBackdrop themeStyle={themeStyle} />
 
-      {/* Main content — safe-area insets so header/footer clear notch + home bar (standalone) */}
+      {/* Main content — top safe-area clears notch; extra bottom padding on mobile
+          leaves room for the fixed bottom tab bar (md:pb-8 on desktop where there's none). */}
       <div
-        className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8"
-        style={{
-          paddingTop: 'calc(2rem + env(safe-area-inset-top))',
-          paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))',
-        }}
+        className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 pt-8 pb-28 md:pb-8 space-y-8"
+        style={{ paddingTop: 'calc(2rem + env(safe-area-inset-top))' }}
       >
 
         <AppHeader themeStyle={themeStyle} hunterName={hunterName} level={level} />
@@ -663,7 +661,7 @@ export default function App() {
           onSignOut={handleSignOut}
         />
 
-        <nav className="grid grid-cols-3 gap-2 bg-zinc-900/80 p-1.5 rounded-xl border border-white/10">
+        <nav className="hidden md:grid grid-cols-3 gap-2 bg-zinc-900/80 p-1.5 rounded-xl border border-white/10">
           {(['QUEST', 'TREASURY', 'JOURNEY'] as const).map(tab => {
             const icons = { QUEST: Map, TREASURY: Coins, JOURNEY: History };
             const labels = { QUEST: 'QUEST BOARD (Rèn luyện)', TREASURY: 'TREASURY LEDGER (Chi tiêu)', JOURNEY: 'TIMELINE (Nhật ký)' };
@@ -737,6 +735,32 @@ export default function App() {
 
         <AppFooter />
       </div>
+
+      {/* Bottom tab bar — mobile only (desktop uses the top nav). Thumb-friendly. */}
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-zinc-950/95 backdrop-blur border-t border-white/10"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="grid grid-cols-3">
+          {(['QUEST', 'TREASURY', 'JOURNEY'] as const).map(tab => {
+            const icons = { QUEST: Map, TREASURY: Coins, JOURNEY: History };
+            const labels = { QUEST: 'QUEST', TREASURY: 'TREASURY', JOURNEY: 'JOURNEY' };
+            const Icon = icons[tab];
+            const active = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                onClick={() => { if (soundEnabled) playClickSound(); setActiveTab(tab); }}
+                className={`py-2.5 flex flex-col items-center gap-1 transition-colors ${active ? 'text-orange-500' : 'text-zinc-500'}`}
+              >
+                <Icon className={`w-5 h-5 transition-transform ${active ? 'scale-110' : ''}`} />
+                <span className="text-[10px] font-mono font-bold tracking-wide">{labels[tab]}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
       <PWAInstallPrompt />
     </div>
   );
