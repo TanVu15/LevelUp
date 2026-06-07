@@ -38,11 +38,19 @@ const GLITCH_CSS = `
 
 interface BootIntroProps {
   onDone: () => void;
+  soundEnabled: boolean;
 }
 
-export default function BootIntro({ onDone }: BootIntroProps) {
+export default function BootIntro({ onDone, soundEnabled }: BootIntroProps) {
+  // Guard ONLY the sound so React 19 StrictMode's double-invoke (dev) doesn't play
+  // the zap twice (which sounds out-of-sync). The timer is set/cleared each invoke
+  // so StrictMode cleanup doesn't leave the intro stuck.
+  const zappedRef = React.useRef(false);
   React.useEffect(() => {
-    playElectricZap();
+    if (soundEnabled && !zappedRef.current) {
+      zappedRef.current = true;
+      playElectricZap();
+    }
     const t = setTimeout(onDone, 1500);
     return () => clearTimeout(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

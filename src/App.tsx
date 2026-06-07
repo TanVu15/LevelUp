@@ -625,7 +625,7 @@ export default function App() {
     <div className="min-h-screen transition-all duration-500 bg-[#0F0F12] font-sans text-neutral-300 selection:bg-orange-950 selection:text-orange-100">
 
       {/* Modals & toasts */}
-      {showIntro && <BootIntro onDone={() => setShowIntro(false)} />}
+      {showIntro && !showAuthModal && <BootIntro soundEnabled={soundEnabled} onDone={() => setShowIntro(false)} />}
       {!onboardingDone && !showAuthModal && <OnboardingModal onComplete={handleOnboardingComplete} onSkip={handleOnboardingSkip} onShowAuth={isConfigured ? () => setShowAuthModal(true) : undefined} />}
       <LevelUpModal info={levelUpInfo} onClose={() => setLevelUpInfo(null)} />
       <CelebrationToast message={toastMsg} onClose={() => setToastMsg(null)} />
