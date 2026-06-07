@@ -1,4 +1,4 @@
-import { Task, DayLog, Transaction, Achievement, WhyCard } from '../types';
+import { Task, DayLog, Transaction, Achievement, WhyCard, RoutineDef } from '../types';
 import { getTodayDateString } from './date';
 
 // Bump this when the shape of BackupData changes.
@@ -18,8 +18,9 @@ export interface BackupData {
   onboardingDone: boolean;
   whyCards: WhyCard[];
   monthlyBudgets: Record<string, number>;
-  routineLabels: Record<string, string>;
-  routineDescs?: Record<string, string>; // custom routine descriptions — optional for backward compat
+  routines?: RoutineDef[];                // custom routine set (feat-custom-routines) — source of truth
+  routineLabels?: Record<string, string>; // legacy (pre-custom-routines) — read-only for migration
+  routineDescs?: Record<string, string>;  // legacy — read-only for migration
   dailyRoutines: Record<string, boolean>;
   tasks: Task[];
   archivedTasks?: Task[]; // tasks auto-dọn từ ngày cũ — giữ để đếm achievement + lịch sử

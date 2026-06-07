@@ -1,5 +1,5 @@
 import { isConfigured, loadFirebase } from '../firebase';
-import { Task, Transaction, DayLog, Achievement, WhyCard } from '../types';
+import { Task, Transaction, DayLog, Achievement, WhyCard, RoutineDef } from '../types';
 
 export interface GameState {
   hunterName: string;
@@ -10,8 +10,9 @@ export interface GameState {
   disciplineMode: boolean;
   soundEnabled: boolean;
   onboardingDone: boolean;
-  routineLabels: Record<string, string>;
-  routineDescs?: Record<string, string>; // custom routine descriptions — optional for backward compat
+  routines?: RoutineDef[];                // custom routine set (feat-custom-routines) — source of truth
+  routineLabels?: Record<string, string>; // legacy (pre-custom-routines) — read-only for migration
+  routineDescs?: Record<string, string>;  // legacy — read-only for migration
   whyCards: WhyCard[];
   monthlyBudgets: Record<string, number>;
   dailyRoutines: Record<string, boolean>;

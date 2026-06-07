@@ -36,7 +36,8 @@ src/
 │   ├── usePersistedState.ts   # useState ↔ localStorage + codecs (str/int/bool/json)
 │   └── useFirebaseSync.ts     # Auth + Firestore sync (ADR-011), gói gọn khỏi App.tsx
 ├── data/
-│   └── quotes.ts              # 44 quotes (30 discipline + 14 motivation)
+│   ├── quotes.ts              # 44 quotes (30 discipline + 14 motivation)
+│   └── routines.ts            # RoutineDef template + ROUTINE_ICONS registry (ADR-014)
 └── utils/
     ├── audio.ts               # Web Audio API: click, success, levelup, timer
     ├── date.ts                # Timezone-safe LOCAL date helpers (KHÔNG dùng toISOString cho ngày)
@@ -110,7 +111,7 @@ interface Achievement {
 - `disciplineMode`, `soundEnabled` — user preferences
 - `whyCards: WhyCard[]` — user's 3 motivational anchors (PAIN / FAILURE / GOAL)
 - `monthlyBudgets: Record<string, number>` — YYYY-MM → budget VND
-- `routineLabels` — custom labels cho 6 routine (Record<string, string>)
+- `routines: RoutineDef[]` — bộ routine tùy biến (thêm/xóa/sửa, 1–8), nguồn sự thật cho "Đường Ray Kỷ Luật" (ADR-014). Thay `routineLabels`/`routineDescs` cũ (chỉ còn đọc legacy khi migrate)
 - `dailyRoutines`, `tasks`, `archivedTasks`, `transactions`, `weightLogs`, `logs`, `achievements` — game data
   - `archivedTasks`: task ngày cũ tự dọn khi sang ngày mới (không xóa — đếm achievement + Lịch sử). Xem ADR-013
 - `levelUpInfo` — trigger LevelUpModal
@@ -194,6 +195,14 @@ interface Achievement {
 **Sync:** `archivedTasks?` có trong GameState (Firestore) + BackupData (Export/Import), default `[]`. localStorage key `ironwill_archived_tasks`.
 **Không chọn:** Giữ task ngày cũ với badge CARRIED OVER (clutter dồn) · xóa hẳn (mất số đếm achievement). Cross-device: `applyGameState` set thẳng archivedTasks từ cloud, không chạy lại rollover (nhất quán streak — xem Known Issues).
 
+### ADR-014: Custom Routines (Đường Ray Kỷ Luật tùy biến)
+**Quyết định:** Routine không còn cố định 6 — `routines: RoutineDef[]` (id/label/desc/iconName) là **nguồn sự thật duy nhất**, cho thêm/xóa/sửa/đổi icon, giới hạn **1–8**. Bộ 6 mặc định (`DEFAULT_ROUTINES` trong `data/routines.ts`) là **template**, có nút "Khôi phục mẫu gốc" (modal xác nhận) reset về 6. Icon chọn từ `ROUTINE_ICONS` registry (~12, lưu `iconName` string — KHÔNG lưu component).
+**Bất biến giữ:** `dailyRoutines` + `DayLog.routines`/`routineXpClaimed` vẫn keyed theo `id` → streak/XP cũ không mất. Logic phụ thuộc "6" được generalize theo N: OVERDRIVE = hoàn thành tất cả routine hiện có (1 lần/ngày), reset hằng ngày theo id hiện tại, "X/N CLEARED", `checkChallengeCondition` nhận `totalRoutines`.
+**Migration:** user cũ có `routineLabels`/`routineDescs` → `buildRoutinesFromLegacy()` áp lên template (giữ id). 2 map cũ thành optional legacy, chỉ đọc khi migrate.
+**Anti-exploit (ADR-009):** cap 8 routine chống lạm phát XP (routine 5/cái + OVERDRIVE 50, đều 1 lần/ngày).
+**Sync:** `routines?` trong GameState + BackupData + mọi điểm sync/export/import.
+**Không chọn:** giữ 2 map labels/descs làm nguồn (2 source of truth) · cho vô hạn routine (lạm phát XP) · lưu icon component trong state.
+
 ## PATTERNS & CONVENTIONS
 
 ```tsx
@@ -202,8 +211,11 @@ interface QuestBoardProps {
   addTask: (title: string, tier: TaskTier, dueDate?: string) => void;
   whyCards: WhyCard[];
   setWhyCards: (cards: WhyCard[]) => void;
-  routineLabels: Record<string, string>;
-  setRoutineLabel: (id: string, label: string) => void;
+  routines: RoutineDef[];
+  addRoutine: (label: string, desc: string, iconName: string) => void;
+  updateRoutine: (id: string, patch: Partial<Omit<RoutineDef, 'id'>>) => void;
+  deleteRoutine: (id: string) => void;
+  restoreDefaultRoutines: () => void;
 }
 
 // Pattern: XP daily cap — đọc taskXpEarned từ DayLog, KHÔNG tính từ tasks array

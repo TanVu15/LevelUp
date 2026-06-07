@@ -44,6 +44,15 @@ export interface DailyRoutineSetting {
   label: string;
 }
 
+// Customizable daily routine ("Đường Ray Kỷ Luật"). Single source of truth for the
+// routine set; dailyRoutines / DayLog stay keyed by `id`. See feat-custom-routines.
+export interface RoutineDef {
+  id: string;
+  label: string;
+  desc: string;
+  iconName: string; // key into ROUTINE_ICONS (data/routines.ts)
+}
+
 export interface DayLog {
   date: string; // YYYY-MM-DD
   routines: Record<string, boolean>;

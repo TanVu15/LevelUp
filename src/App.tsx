@@ -10,7 +10,7 @@ import OnboardingModal from './components/OnboardingModal';
 import BootIntro from './components/BootIntro';
 import CelebrationToast from './components/CelebrationToast';
 import MonthlyReviewModal, { MonthlyReviewState } from './components/MonthlyReviewModal';
-import { Task, Transaction, DayLog, Achievement, TaskTier, ExpenseCategory, WhyCard } from './types';
+import { Task, Transaction, DayLog, Achievement, TaskTier, ExpenseCategory, WhyCard, RoutineDef } from './types';
 import { playClickSound, playLevelUpSound, playQuestSuccessSound } from './utils/audio';
 import { loadAvatar, loadAllBodyPhotos, saveAvatar, saveBodyPhoto, deleteBodyPhoto, compressImage } from './utils/imageDB';
 import { isConfigured, loadFirebase } from './firebase';
@@ -23,6 +23,7 @@ import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { getTodayDateString, getCurrentYearMonth } from './utils/date';
 import { getRankForLevel, getXpNeeded, applyXpGain, DAILY_TASK_XP_CAP, DAILY_TIER_CAPS } from './utils/xp';
 import { getDailyChallenge, checkChallengeCondition } from './utils/challenge';
+import { DEFAULT_ROUTINES, MAX_ROUTINES, makeRoutineId, buildRoutinesFromLegacy } from './data/routines';
 import { getStreakMilestoneMsg, computeStreakRollover } from './utils/streak';
 import { usePersistedState, codecs, Codec } from './hooks/usePersistedState';
 
@@ -82,12 +83,23 @@ export default function App() {
   const [whyCards, setWhyCards] = usePersistedState<WhyCard[]>('ironwill_why_cards', [], codecs.json());
   const [monthlyBudgets, setMonthlyBudgets] = usePersistedState<Record<string, number>>('ironwill_monthly_budgets', {}, codecs.json());
   const [monthlyReview, setMonthlyReview] = React.useState<MonthlyReviewState | null>(null);
-  const [routineLabels, setRoutineLabels] = usePersistedState<Record<string, string>>(
-    'ironwill_routine_labels',
-    { eat: 'EAT CLEAN', pray: 'CLEAR MIND', train: 'MOVE BODY', study: 'SKILL UP', work: 'DEEP WORK', sleep: 'SLEEP WELL' },
-    codecs.json(),
+  // Custom routines — single source of truth. Migrates legacy label/desc maps for
+  // users who predate this feature. See feat-custom-routines / data/routines.ts.
+  const [routines, setRoutines] = React.useState<RoutineDef[]>(() => {
+    const saved = localStorage.getItem('ironwill_routines');
+    if (saved) { try { return JSON.parse(saved); } catch { /* fall through to migrate */ } }
+    const labels = (() => { try { return JSON.parse(localStorage.getItem('ironwill_routine_labels') || '{}'); } catch { return {}; } })();
+    const descs  = (() => { try { return JSON.parse(localStorage.getItem('ironwill_routine_descs')  || '{}'); } catch { return {}; } })();
+    return buildRoutinesFromLegacy(labels, descs);
+  });
+  React.useEffect(() => {
+    localStorage.setItem('ironwill_routines', JSON.stringify(routines));
+  }, [routines]);
+  // Fresh daily-routine map (all current routines unchecked) for day rollover/reset.
+  const blankRoutines = React.useMemo<Record<string, boolean>>(
+    () => Object.fromEntries(routines.map(r => [r.id, false])),
+    [routines],
   );
-  const [routineDescs, setRoutineDescs] = usePersistedState<Record<string, string>>('ironwill_routine_descs', {}, codecs.json());
   const [dailyRoutines, setDailyRoutines] = usePersistedState<Record<string, boolean>>(
     'ironwill_daily_routines',
     { eat: false, pray: false, train: false, study: false, work: false, sleep: false },
@@ -157,7 +169,7 @@ export default function App() {
           a.id === 'ach1' && a.unlockedAt === null ? { ...a, unlockedAt: today } : a
         ));
       }
-      setDailyRoutines({ eat: false, pray: false, train: false, study: false, work: false, sleep: false });
+      setDailyRoutines(blankRoutines);
 
       // Auto-archive task ngày cũ — board fresh mỗi ngày (REQ-01).
       // Giữ lại: incomplete có deadline hôm nay/tương lai. Archive: phần còn lại.
@@ -230,7 +242,9 @@ export default function App() {
   const applyGameState = React.useCallback((s: GameState) => {
     const today = getTodayDateString();
     const isNewDay = !s.lastOpenDate || s.lastOpenDate !== today;
-    const blankRoutines = { eat: false, pray: false, train: false, study: false, work: false, sleep: false };
+    // Routines: use cloud's set, else migrate from legacy label/desc maps, else default.
+    const appliedRoutines = s.routines ?? buildRoutinesFromLegacy(s.routineLabels, s.routineDescs);
+    const cloudBlank: Record<string, boolean> = Object.fromEntries(appliedRoutines.map(r => [r.id, false]));
 
     setHunterName(s.hunterName ?? 'Challenger');
     suppressLevelUpRef.current = true; // cloud level change is not gameplay — no modal
@@ -240,12 +254,11 @@ export default function App() {
     setDisciplineMode(s.disciplineMode ?? true);
     setSoundEnabled(s.soundEnabled ?? true);
     setOnboardingDone(s.onboardingDone ?? true);
-    setRoutineLabels(s.routineLabels ?? {});
-    setRoutineDescs(s.routineDescs ?? {});
+    setRoutines(appliedRoutines);
     setWhyCards(s.whyCards ?? []);
     setMonthlyBudgets(s.monthlyBudgets ?? {});
     // Reset routines when cloud state is from a previous day — prevents stale ticks showing on new day
-    setDailyRoutines(isNewDay ? blankRoutines : (s.dailyRoutines ?? blankRoutines));
+    setDailyRoutines(isNewDay ? cloudBlank : (s.dailyRoutines ?? cloudBlank));
     setTasks(s.tasks ?? []);
     setArchivedTasks(s.archivedTasks ?? []);
     setTransactions(s.transactions ?? []);
@@ -260,12 +273,12 @@ export default function App() {
   // real field changes → useFirebaseSync's debounce timer doesn't reset every render.
   const gameState = React.useMemo<GameState>(() => ({
     hunterName, level, xp, streak, shields, disciplineMode, soundEnabled,
-    onboardingDone, routineLabels, routineDescs, whyCards, monthlyBudgets, dailyRoutines,
+    onboardingDone, routines, whyCards, monthlyBudgets, dailyRoutines,
     tasks, archivedTasks, transactions, weightLogs, logs, achievements,
     lastOpenDate: localStorage.getItem('ironwill_last_open_date') ?? getTodayDateString(),
   }), [
     hunterName, level, xp, streak, shields, disciplineMode, soundEnabled,
-    onboardingDone, routineLabels, routineDescs, whyCards, monthlyBudgets, dailyRoutines,
+    onboardingDone, routines, whyCards, monthlyBudgets, dailyRoutines,
     tasks, archivedTasks, transactions, weightLogs, logs, achievements,
   ]);
 
@@ -282,7 +295,7 @@ export default function App() {
   const xpNeeded = getXpNeeded(level);
   const todayStr = getTodayDateString();
   const todayChallenge = getDailyChallenge(todayStr);
-  const isChallengeConditionMet = checkChallengeCondition(todayChallenge, dailyRoutines, tasks, todayStr);
+  const isChallengeConditionMet = checkChallengeCondition(todayChallenge, dailyRoutines, tasks, todayStr, routines.length);
   const isChallengeAlreadyClaimed = logs.find(l => l.date === todayStr)?.dailyChallengeClaimed ?? false;
   const totalTasksCompleted = [...tasks, ...archivedTasks].filter(t => t.completed).length;
 
@@ -411,9 +424,12 @@ export default function App() {
   const toggleRoutine = (routineId: string) => {
     const today = getTodayDateString();
     const nextDone = !dailyRoutines[routineId];
-    const wasAllDone = Object.values(dailyRoutines).every(Boolean);
     const updated = { ...dailyRoutines, [routineId]: nextDone };
-    const nowAllDone = Object.values(updated).every(Boolean);
+    // "All done" is computed over the CURRENT routine set (not raw dailyRoutines keys,
+    // which may hold stale ids from deleted routines).
+    const allDoneFor = (m: Record<string, boolean>) => routines.length > 0 && routines.every(r => !!m[r.id]);
+    const wasAllDone = allDoneFor(dailyRoutines);
+    const nowAllDone = allDoneFor(updated);
 
     // Read today's XP claim flags from logs (fresh per render)
     const todayLog = logs.find(l => l.date === today);
@@ -457,11 +473,26 @@ export default function App() {
     });
   };
 
-  const setRoutineLabel = (id: string, label: string) =>
-    setRoutineLabels(prev => ({ ...prev, [id]: label }));
+  // ── ROUTINES (custom) ────────────────────────────────────────────────────
+  const updateRoutine = (id: string, patch: Partial<Omit<RoutineDef, 'id'>>) =>
+    setRoutines(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
 
-  const setRoutineDesc = (id: string, desc: string) =>
-    setRoutineDescs(prev => ({ ...prev, [id]: desc }));
+  const addRoutine = (label: string, desc: string, iconName: string) => {
+    setRoutines(prev => prev.length >= MAX_ROUTINES
+      ? prev
+      : [...prev, { id: makeRoutineId(), label: label.trim() || 'NEW ROUTINE', desc: desc.trim(), iconName }]);
+  };
+
+  const deleteRoutine = (id: string) => {
+    setRoutines(prev => prev.length <= 1 ? prev : prev.filter(r => r.id !== id));
+    // Drop its tick from today's UI map so OVERDRIVE "all done" isn't blocked by a stale key.
+    setDailyRoutines(prev => { const next = { ...prev }; delete next[id]; return next; });
+  };
+
+  const restoreDefaultRoutines = () => {
+    setRoutines(DEFAULT_ROUTINES.map(r => ({ ...r })));
+    setDailyRoutines(Object.fromEntries(DEFAULT_ROUTINES.map(r => [r.id, false])));
+  };
 
   const claimDailyChallenge = () => {
     const today = getTodayDateString();
@@ -546,7 +577,7 @@ export default function App() {
   const handleExport = () => {
     exportBackup({
       hunterName, level, xp, streak, shields, disciplineMode, soundEnabled,
-      onboardingDone, whyCards, monthlyBudgets, routineLabels, routineDescs, dailyRoutines,
+      onboardingDone, whyCards, monthlyBudgets, routines, dailyRoutines,
       tasks, archivedTasks, transactions, weightLogs, logs, achievements,
       lastOpenDate: localStorage.getItem('ironwill_last_open_date') ?? getTodayDateString(),
       avatarUrl, bodyPhotos, // ảnh đi kèm file backup (không vào Firestore — xem feat-backup-photos)
@@ -569,8 +600,7 @@ export default function App() {
     setDisciplineMode(s.disciplineMode ?? true);
     setSoundEnabled(s.soundEnabled ?? true);
     setOnboardingDone(s.onboardingDone ?? true);
-    setRoutineLabels(s.routineLabels ?? {});
-    setRoutineDescs(s.routineDescs ?? {});
+    setRoutines(s.routines ?? buildRoutinesFromLegacy(s.routineLabels, s.routineDescs));
     setWhyCards(s.whyCards ?? []);
     setMonthlyBudgets(s.monthlyBudgets ?? {});
     setDailyRoutines(s.dailyRoutines ?? {});
@@ -690,8 +720,9 @@ export default function App() {
               dailyRoutines={dailyRoutines} toggleRoutine={toggleRoutine}
               disciplineMode={disciplineMode} soundEnabled={soundEnabled} addXP={addXP}
               whyCards={whyCards} setWhyCards={setWhyCards}
-              routineLabels={routineLabels} setRoutineLabel={setRoutineLabel}
-              routineDescs={routineDescs} setRoutineDesc={setRoutineDesc}
+              routines={routines}
+              addRoutine={addRoutine} updateRoutine={updateRoutine}
+              deleteRoutine={deleteRoutine} restoreDefaultRoutines={restoreDefaultRoutines}
               taskTierCountsToday={
                 logs.find(l => l.date === getTodayDateString())?.taskCountByTier ?? {}
               }

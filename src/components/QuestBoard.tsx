@@ -1,15 +1,15 @@
 import React from 'react';
 import {
   Check, Plus, Trash2, Sparkles, Play, Square, Zap, Award,
-  CheckSquare, SquareTerminal, Dumbbell, DollarSign, BookOpen,
-  Utensils, Moon, Map, Pencil, History
+  CheckSquare, SquareTerminal, Pencil, History, X, RotateCcw
 } from 'lucide-react';
-import { Task, TaskTier, WhyCard, WhyCardType } from '../types';
+import { Task, TaskTier, WhyCard, WhyCardType, RoutineDef } from '../types';
 import { playClickSound, playQuestSuccessSound, playTimerEndSound } from '../utils/audio';
 import { Quote, QUOTES } from '../data/quotes';
 import TaskHistoryModal from './TaskHistoryModal';
 import { getTodayDateString, addDays } from '../utils/date';
 import { DAILY_TIER_CAPS } from '../utils/xp';
+import { ROUTINE_ICONS, ROUTINE_ICON_KEYS, getRoutineIcon, MAX_ROUTINES } from '../data/routines';
 
 interface QuestBoardProps {
   tasks: Task[];
@@ -24,10 +24,11 @@ interface QuestBoardProps {
   addXP: (amount: number) => void;
   whyCards: WhyCard[];
   setWhyCards: (cards: WhyCard[]) => void;
-  routineLabels: Record<string, string>;
-  setRoutineLabel: (id: string, label: string) => void;
-  routineDescs: Record<string, string>;
-  setRoutineDesc: (id: string, desc: string) => void;
+  routines: RoutineDef[];
+  addRoutine: (label: string, desc: string, iconName: string) => void;
+  updateRoutine: (id: string, patch: Partial<Omit<RoutineDef, 'id'>>) => void;
+  deleteRoutine: (id: string) => void;
+  restoreDefaultRoutines: () => void;
   taskTierCountsToday: Partial<Record<TaskTier, number>>;
   dailyChallenge: { id: string; title: string; desc: string; xp: number };
   isChallengeConditionMet: boolean;
@@ -41,22 +42,12 @@ const WHY_TYPE_CONFIG: Record<WhyCardType, { emoji: string; label: string; textC
   GOAL:    { emoji: '🔥', label: 'Mục tiêu', textColor: 'text-orange-400', bgCls: 'bg-orange-950/20', borderCls: 'border-orange-800/30', btnActiveCls: 'bg-orange-950/30 border-orange-600/50 text-orange-400' },
 };
 
-const DEFAULT_ROUTINES = [
-  { id: 'eat',   defaultLabel: 'EAT CLEAN',   desc: 'Ăn đủ protein + rau củ, uống đủ 2L nước',              icon: Utensils,   color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' },
-  { id: 'pray',  defaultLabel: 'CLEAR MIND',  desc: '10 phút thiền / nhật ký / viết 3 mục tiêu hôm nay',    icon: Map,        color: 'text-sky-400 bg-sky-500/10 border-sky-500/30' },
-  { id: 'train', defaultLabel: 'MOVE BODY',   desc: '30 phút vận động: gym, chạy, đạp xe, yoga...',         icon: Dumbbell,   color: 'text-red-500 bg-red-500/10 border-red-500/30' },
-  { id: 'study', defaultLabel: 'SKILL UP',    desc: 'Đọc 20 trang sách hoặc học kỹ năng mới 30 phút',       icon: BookOpen,   color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' },
-  { id: 'work',  defaultLabel: 'DEEP WORK',   desc: '2h tập trung sâu: tắt thông báo, một việc duy nhất',   icon: DollarSign, color: 'text-violet-400 bg-violet-500/10 border-violet-500/30' },
-  { id: 'sleep', defaultLabel: 'SLEEP WELL',    desc: 'Ngủ đủ 7-8 tiếng x Chặn ánh sáng xanh', icon: Moon,     color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30' },
-];
-
 export default function QuestBoard({
   tasks, archivedTasks, addTask, toggleTask, deleteTask,
   dailyRoutines, toggleRoutine,
   disciplineMode, soundEnabled, addXP,
   whyCards, setWhyCards,
-  routineLabels, setRoutineLabel,
-  routineDescs, setRoutineDesc,
+  routines, addRoutine, updateRoutine, deleteRoutine, restoreDefaultRoutines,
   taskTierCountsToday,
   dailyChallenge, isChallengeConditionMet, isChallengeAlreadyClaimed, claimDailyChallenge,
 }: QuestBoardProps) {
@@ -123,8 +114,8 @@ export default function QuestBoard({
     setTimerMinutes(minutes); setTimerSeconds(0);
   };
 
-  const completedRoutinesCount = DEFAULT_ROUTINES.filter(r => dailyRoutines[r.id]).length;
-  const hasCompletedAllRoutines = completedRoutinesCount === DEFAULT_ROUTINES.length;
+  const completedRoutinesCount = routines.filter(r => dailyRoutines[r.id]).length;
+  const hasCompletedAllRoutines = routines.length > 0 && completedRoutinesCount === routines.length;
 
   const getTodayStr    = () => getTodayDateString();
   const getTomorrowStr = () => addDays(getTodayDateString(), 1);
@@ -169,12 +160,29 @@ export default function QuestBoard({
   };
   const saveLabelEdit = () => {
     if (editingLabelId) {
-      if (tempLabel.trim()) setRoutineLabel(editingLabelId, tempLabel.trim().toUpperCase().slice(0, 20));
-      setRoutineDesc(editingLabelId, tempDesc.trim());
+      updateRoutine(editingLabelId, {
+        ...(tempLabel.trim() ? { label: tempLabel.trim().toUpperCase().slice(0, 20) } : {}),
+        desc: tempDesc.trim(),
+      });
     }
     setEditingLabelId(null);
   };
   const cancelLabelEdit = () => setEditingLabelId(null);
+
+  // ── Add / restore routines ────────────────────────────────────────────────
+  const [showAddRoutine, setShowAddRoutine] = React.useState(false);
+  const [newRoutineLabel, setNewRoutineLabel] = React.useState('');
+  const [newRoutineDesc, setNewRoutineDesc] = React.useState('');
+  const [newRoutineIcon, setNewRoutineIcon] = React.useState<string>(ROUTINE_ICON_KEYS[0]);
+  const [showRestoreConfirm, setShowRestoreConfirm] = React.useState(false);
+
+  const submitNewRoutine = () => {
+    if (!newRoutineLabel.trim()) return;
+    addRoutine(newRoutineLabel, newRoutineDesc, newRoutineIcon);
+    if (soundEnabled) playQuestSuccessSound();
+    setNewRoutineLabel(''); setNewRoutineDesc(''); setNewRoutineIcon(ROUTINE_ICON_KEYS[0]);
+    setShowAddRoutine(false);
+  };
 
   const openWhyEdit = (slot: number) => {
     const card = whyCards[slot];
@@ -233,23 +241,22 @@ export default function QuestBoard({
               <p className="text-xl font-bold font-sans tracking-tight text-white mt-1">Đường Ray Kỷ Luật</p>
             </div>
             <span className="text-xs font-mono px-3 py-1 bg-black/60 text-orange-500 border border-orange-600/30 rounded-full">
-              {completedRoutinesCount} / 6 CLEARED
+              {completedRoutinesCount} / {routines.length} CLEARED
             </span>
           </div>
           <p className="text-xs text-neutral-400 mb-6 font-mono">
             {disciplineMode
               ? "Kẻ lười biếng phó mặc cho tâm trạng. Người kỷ luật lặp lại thói quen rèn luyện vô điều kiện mỗi ngày."
-              : "Hoàn thành 6 thói quen cốt lõi của đàn anh bản lĩnh."}
+              : "Hoàn thành các thói quen cốt lõi của đàn anh bản lĩnh."}
           </p>
 
           <div className="space-y-3">
-            {DEFAULT_ROUTINES.map((routine) => {
+            {routines.map((routine) => {
               const isDone = !!dailyRoutines[routine.id];
-              const Icon = routine.icon;
-              const label = routineLabels[routine.id] ?? routine.defaultLabel;
+              const { Icon, color } = getRoutineIcon(routine.iconName);
+              const label = routine.label;
+              const desc = routine.desc;
               const isEditingThis = editingLabelId === routine.id;
-
-              const desc = routineDescs[routine.id] || routine.desc;
 
               return (
                 <div
@@ -265,7 +272,7 @@ export default function QuestBoard({
                   {isEditingThis ? (
                     /* ── Edit mode ── */
                     <div className="flex items-start gap-3">
-                      <div className={`p-2 rounded-lg border flex-shrink-0 mt-1 ${routine.color}`}>
+                      <div className={`p-2 rounded-lg border flex-shrink-0 mt-1 ${color}`}>
                         <Icon className="w-4 h-4" />
                       </div>
                       <div className="flex-1 min-w-0 space-y-2">
@@ -287,11 +294,29 @@ export default function QuestBoard({
                             onChange={e => setTempDesc(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Escape') cancelLabelEdit(); }}
                             maxLength={60}
-                            placeholder={routine.desc}
+                            placeholder={desc}
                             className="w-full text-[11px] font-sans bg-black/60 border border-white/10 focus:border-orange-500/50 rounded px-3 py-1.5 text-neutral-300 placeholder:text-zinc-600 focus:outline-none transition-colors"
                           />
                         </div>
-                        <div className="flex gap-2 pt-0.5">
+                        {/* Icon picker */}
+                        <div>
+                          <label className="text-[9px] font-mono uppercase tracking-widest text-zinc-500 block mb-1">Biểu tượng</label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {ROUTINE_ICON_KEYS.map(key => {
+                              const Ic = ROUTINE_ICONS[key].Icon;
+                              const sel = routine.iconName === key;
+                              return (
+                                <button key={key} type="button"
+                                  onClick={() => updateRoutine(routine.id, { iconName: key })}
+                                  className={`p-1.5 rounded border transition-all ${sel ? ROUTINE_ICONS[key].color : 'border-white/5 text-zinc-600 hover:text-zinc-300'}`}
+                                >
+                                  <Ic className="w-3.5 h-3.5" />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 pt-0.5">
                           <button
                             onClick={saveLabelEdit}
                             className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-black text-[10px] font-black font-mono rounded transition-colors"
@@ -304,6 +329,14 @@ export default function QuestBoard({
                           >
                             HỦY
                           </button>
+                          <button
+                            onClick={() => { deleteRoutine(routine.id); setEditingLabelId(null); }}
+                            disabled={routines.length <= 1}
+                            title={routines.length <= 1 ? 'Phải giữ ít nhất 1 thói quen' : 'Xóa thói quen này'}
+                            className="ml-auto p-1.5 rounded border border-white/10 text-zinc-500 hover:text-red-400 hover:border-red-500/40 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -314,7 +347,7 @@ export default function QuestBoard({
                         className="flex items-center gap-3 flex-1 min-w-0 text-left"
                         onClick={() => toggleRoutine(routine.id)}
                       >
-                        <div className={`p-2 rounded-lg border flex-shrink-0 ${routine.color}`}>
+                        <div className={`p-2 rounded-lg border flex-shrink-0 ${color}`}>
                           <Icon className="w-4 h-4" />
                         </div>
                         <div className="min-w-0">
@@ -328,7 +361,7 @@ export default function QuestBoard({
                         <button
                           onClick={() => startLabelEdit(routine.id, label, desc)}
                           className="p-1 text-zinc-600 hover:text-orange-400 transition-colors"
-                          title="Chỉnh sửa tên & mô tả"
+                          title="Chỉnh sửa tên, mô tả, icon"
                         >
                           <Pencil className="w-3 h-3" />
                         </button>
@@ -347,6 +380,65 @@ export default function QuestBoard({
               );
             })}
           </div>
+
+          {/* Add routine + restore template */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {routines.length < MAX_ROUTINES && (
+              <button
+                onClick={() => { if (soundEnabled) playClickSound(); setShowAddRoutine(v => !v); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-white/15 text-[11px] font-mono text-zinc-400 hover:text-orange-400 hover:border-orange-500/40 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Thêm thói quen
+              </button>
+            )}
+            <button
+              onClick={() => { if (soundEnabled) playClickSound(); setShowRestoreConfirm(true); }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-mono text-zinc-500 hover:text-orange-400 transition-colors ml-auto"
+              title="Đặt lại về 6 thói quen mẫu"
+            >
+              <RotateCcw className="w-3 h-3" /> Khôi phục mẫu gốc
+            </button>
+          </div>
+
+          {showAddRoutine && routines.length < MAX_ROUTINES && (
+            <div className="mt-3 p-4 rounded-lg bg-zinc-900/60 border border-orange-600/20 space-y-3">
+              <input
+                autoFocus
+                value={newRoutineLabel}
+                onChange={e => setNewRoutineLabel(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') submitNewRoutine(); if (e.key === 'Escape') setShowAddRoutine(false); }}
+                maxLength={20}
+                placeholder="Tên thói quen (vd: UỐNG NƯỚC)"
+                className="w-full text-xs font-bold font-mono tracking-widest uppercase bg-black/60 border border-orange-500/40 focus:border-orange-500 rounded px-3 py-2 text-orange-400 placeholder:text-zinc-600 placeholder:normal-case placeholder:tracking-normal focus:outline-none transition-colors"
+              />
+              <input
+                value={newRoutineDesc}
+                onChange={e => setNewRoutineDesc(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') setShowAddRoutine(false); }}
+                maxLength={60}
+                placeholder="Mô tả ngắn (tùy chọn)"
+                className="w-full text-[11px] font-sans bg-black/60 border border-white/10 focus:border-orange-500/50 rounded px-3 py-2 text-neutral-300 placeholder:text-zinc-600 focus:outline-none transition-colors"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {ROUTINE_ICON_KEYS.map(key => {
+                  const Ic = ROUTINE_ICONS[key].Icon;
+                  const sel = newRoutineIcon === key;
+                  return (
+                    <button key={key} type="button"
+                      onClick={() => setNewRoutineIcon(key)}
+                      className={`p-1.5 rounded border transition-all ${sel ? ROUTINE_ICONS[key].color : 'border-white/5 text-zinc-600 hover:text-zinc-300'}`}
+                    >
+                      <Ic className="w-3.5 h-3.5" />
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={submitNewRoutine} className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-black text-[10px] font-black font-mono rounded transition-colors">+ THÊM</button>
+                <button onClick={() => setShowAddRoutine(false)} className="px-3 py-1.5 bg-zinc-900 border border-white/10 hover:border-white/20 text-zinc-400 hover:text-white text-[10px] font-mono rounded transition-colors">HỦY</button>
+              </div>
+            </div>
+          )}
 
           {hasCompletedAllRoutines && (
             <div className="mt-4 p-3 rounded-lg bg-orange-900/10 border border-orange-600/30 text-center animate-pulse">
@@ -774,6 +866,36 @@ export default function QuestBoard({
       </div>
 
       {showHistory && <TaskHistoryModal archivedTasks={archivedTasks} onClose={() => setShowHistory(false)} />}
+
+      {/* Restore-default-routines confirm */}
+      {showRestoreConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm" onClick={() => setShowRestoreConfirm(false)}>
+          <div className="relative w-full max-w-sm bg-zinc-950 border border-orange-600/30 rounded-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 bg-orange-600/20 border border-orange-500/30 rounded-lg flex items-center justify-center">
+                <RotateCcw className="w-4 h-4 text-orange-400" />
+              </div>
+              <p className="text-xs font-black text-white font-mono uppercase italic">Khôi phục mẫu gốc</p>
+              <button onClick={() => setShowRestoreConfirm(false)} className="ml-auto text-zinc-600 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs font-mono text-zinc-400 leading-relaxed">
+              Đặt lại về <span className="text-orange-400 font-bold">6 thói quen mẫu</span> ban đầu.
+              Mọi thói quen tự thêm/đã sửa sẽ bị thay thế. Không thể hoàn tác.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowRestoreConfirm(false)} className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs uppercase tracking-widest rounded-lg transition-all">Hủy</button>
+              <button
+                onClick={() => { restoreDefaultRoutines(); setEditingLabelId(null); setShowAddRoutine(false); if (soundEnabled) playClickSound(); setShowRestoreConfirm(false); }}
+                className="flex-1 py-2.5 bg-orange-600 hover:bg-orange-500 text-black font-black italic text-xs uppercase tracking-widest rounded-lg transition-all"
+              >
+                Khôi phục
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

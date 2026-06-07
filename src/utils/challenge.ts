@@ -32,12 +32,14 @@ export function checkChallengeCondition(
   dailyRoutines: Record<string, boolean>,
   tasks: Task[],
   today: string,
+  totalRoutines: number,
 ): boolean {
   const completedRoutines = Object.values(dailyRoutines).filter(Boolean).length;
   const todayCompleted = tasks.filter(t => t.completed && t.claimedAt === today);
   switch (challenge.type) {
-    case 'routines_min':      return completedRoutines >= challenge.threshold;
-    case 'routines_all':      return completedRoutines >= 6;
+    // If the user has fewer routines than the threshold, completing all of them counts.
+    case 'routines_min':      return completedRoutines >= Math.min(challenge.threshold, totalRoutines);
+    case 'routines_all':      return totalRoutines > 0 && completedRoutines >= totalRoutines;
     case 'boss_task':         return todayCompleted.filter(t => t.tier === 'BOSS').length >= challenge.threshold;
     case 'dungeon_tasks_min': return todayCompleted.filter(t => t.tier === 'DUNGEON').length >= challenge.threshold;
     case 'any_tasks_min':     return todayCompleted.length >= challenge.threshold;
