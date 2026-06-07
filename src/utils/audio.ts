@@ -131,8 +131,8 @@ export function playLevelUpSound() {
   }
 }
 
-// Electric sparks — sharp, bright crackle/arc bursts like a Tesla coil or a
-// shorting wire. Hits instantly and stays dense to match the noisy AWAKEN glitch.
+// AWAKEN intro zap — plays ONLY the sample public/sfx/electric-zap.mp3 (latest).
+// The old synthesized spark fallback was removed so no duplicate/legacy sound plays.
 // Resume-aware so it fires the moment the intro appears (no suspended-context lag).
 export function playElectricZap(): void {
   const ctx = getAudioContext();
@@ -149,10 +149,10 @@ export function playElectricZap(): void {
   const run = () => {
     try {
       if (zapBuffer) { playBuffer(zapBuffer); return; }
-      // Not decoded yet: wait for the sample so we always play the real sound,
-      // only fall back to synth sparks if the file genuinely failed to load.
+      // Not decoded yet: wait for the sample, then play it. If it genuinely fails
+      // to load, stay silent (no synth fallback).
       preloadZap().then(b => {
-        try { b ? playBuffer(b) : renderSparks(ctx); } catch { /* unsupported */ }
+        if (b) { try { playBuffer(b); } catch { /* unsupported */ } }
       });
     } catch { /* unsupported */ }
   };
@@ -160,97 +160,6 @@ export function playElectricZap(): void {
   // live clock instead of being delayed/clumped.
   if (ctx.state === 'suspended') ctx.resume().then(run).catch(() => {});
   else run();
-}
-
-function renderSparks(ctx: AudioContext): void {
-  const now = ctx.currentTime;
-  const DUR = 1.4;
-
-  // Master bus + hard-ish saturation → crisp, gritty spark edges
-  const master = ctx.createGain();
-  master.gain.value = 0.85;
-  const shaper = ctx.createWaveShaper();
-  const curve = new Float32Array(257);
-  for (let i = 0; i < 257; i++) {
-    const x = (i / 128) - 1;
-    curve[i] = Math.tanh(x * 3);
-  }
-  shaper.curve = curve;
-  master.connect(shaper);
-  shaper.connect(ctx.destination);
-
-  // Shared bright white-noise source for all sparks
-  const bufSize = Math.floor(ctx.sampleRate * DUR);
-  const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
-  const noise = ctx.createBufferSource();
-  noise.buffer = buf;
-  noise.loop = true;
-
-  // High bandpass = thin, bright "sssk-tck" spark texture
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.setValueAtTime(5000, now);
-  bp.Q.value = 7;
-  const sparkGain = ctx.createGain();
-  sparkGain.gain.setValueAtTime(0.0001, now);
-  noise.connect(bp);
-  bp.connect(sparkGain);
-  sparkGain.connect(master);
-
-  // Dense, sharp spark bursts — front-loaded, thinning toward the tail.
-  // First spark lands at t≈0 so the crackle is instant with the visual.
-  let t = now;
-  while (t < now + DUR - 0.05) {
-    const progress = (t - now) / DUR;           // 0 → 1
-    const decay = 0.006 + Math.random() * 0.035; // 6–41ms snap
-    const lvl = 0.35 + Math.random() * 0.55;
-    sparkGain.gain.setValueAtTime(0.0001, t);
-    sparkGain.gain.exponentialRampToValueAtTime(lvl, t + 0.0015); // near-instant attack
-    sparkGain.gain.exponentialRampToValueAtTime(0.0001, t + decay);
-    // Each spark flicks the band to a new bright frequency → arcing shimmer
-    bp.frequency.setValueAtTime(3500 + Math.random() * 5000, t);
-    // Gaps widen as the discharge dies out (sparks get sparser)
-    t += decay + 0.008 + progress * 0.07 + Math.random() * 0.04;
-  }
-  noise.start(now);
-  noise.stop(now + DUR);
-
-  // Tiny pitched "tick" transients on top of the brightest sparks — the audible
-  // snap of an arc jumping a gap. Square wave, ultra-short, randomly pitched.
-  const tick = ctx.createOscillator();
-  tick.type = 'square';
-  const tickGain = ctx.createGain();
-  tickGain.gain.setValueAtTime(0.0001, now);
-  let tt = now + 0.002;
-  while (tt < now + DUR * 0.7) {
-    tick.frequency.setValueAtTime(1500 + Math.random() * 4000, tt);
-    tickGain.gain.setValueAtTime(0.0001, tt);
-    tickGain.gain.exponentialRampToValueAtTime(0.12 + Math.random() * 0.1, tt + 0.001);
-    tickGain.gain.exponentialRampToValueAtTime(0.0001, tt + 0.006);
-    tt += 0.03 + Math.random() * 0.12;
-  }
-  tick.connect(tickGain);
-  tickGain.connect(master);
-  tick.start(now);
-  tick.stop(now + DUR * 0.7 + 0.02);
-
-  // Faint electric hum bed for body — quiet, fades out early so sparks dominate
-  const hum = ctx.createOscillator();
-  hum.type = 'sawtooth';
-  hum.frequency.setValueAtTime(70, now);
-  const humGain = ctx.createGain();
-  humGain.gain.setValueAtTime(0.06, now);
-  humGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
-  const humLp = ctx.createBiquadFilter();
-  humLp.type = 'lowpass';
-  humLp.frequency.value = 400;
-  hum.connect(humLp);
-  humLp.connect(humGain);
-  humGain.connect(master);
-  hum.start(now);
-  hum.stop(now + 0.65);
 }
 
 export function playTimerEndSound() {
