@@ -179,7 +179,7 @@ export default function StatusHeader({
         </div>
 
         {/* Mindset + sound controls */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-black/40 p-3 rounded-lg border border-white/5 text-xs font-mono">
+        <div className="flex flex-wrap items-center gap-3 bg-black/40 p-3 rounded-lg border border-white/5 text-xs font-mono">
           <div className="flex flex-col gap-1 pr-3 border-r-0 sm:border-r border-white/5">
             <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500">MINDSET TUNING</span>
             <span className="text-xs font-bold text-zinc-200 flex items-center gap-1">
@@ -214,15 +214,15 @@ export default function StatusHeader({
           </div>
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
-            className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-orange-500 transition-colors ml-auto sm:ml-0 border border-white/5"
+            className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-orange-500 transition-colors border border-white/5"
           >
             {soundEnabled ? <Volume2 className="w-4 h-4 text-orange-500" /> : <VolumeX className="w-4 h-4" />}
           </button>
 
-          {/* Auth indicator — only when Firebase is configured */}
+          {/* Auth indicator — only when Firebase is configured. Pushes right on desktop, wraps on mobile. */}
           {isConfigured && (
             authUserEmail ? (
-              <div className="flex items-center gap-1.5 border-l border-white/5 pl-3">
+              <div className="flex items-center gap-1.5 sm:ml-auto sm:border-l border-white/5 sm:pl-3">
                 <span className="text-[9px] font-mono text-zinc-500 max-w-[80px] truncate" title={authUserEmail}>
                   {authUserEmail.split('@')[0]}
                 </span>
@@ -237,7 +237,7 @@ export default function StatusHeader({
             ) : (
               <button
                 onClick={onShowAuth}
-                className="flex items-center gap-1 border-l border-white/5 pl-3 text-[10px] font-mono text-zinc-500 hover:text-orange-400 transition-colors whitespace-nowrap"
+                className="flex items-center gap-1 sm:ml-auto sm:border-l border-white/5 sm:pl-3 text-[10px] font-mono text-zinc-500 hover:text-orange-400 transition-colors whitespace-nowrap"
               >
                 <LogIn className="w-3.5 h-3.5" />
                 Đăng nhập

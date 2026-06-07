@@ -122,9 +122,9 @@ export default function AuthModal({ onClose }: AuthModalProps) {
             <div className="w-7 h-7 bg-orange-600 rounded-lg flex items-center justify-center">
               <Zap className="w-4 h-4 text-black" />
             </div>
-            <div>
-              <p className="text-[9px] font-mono text-orange-500 uppercase tracking-widest">LevelUp</p>
-              <p className="text-xs font-black text-white font-mono uppercase italic leading-none">Bắt đầu hành trình</p>
+            <div className="flex flex-col gap-1">
+              <p className="text-[9px] font-mono text-orange-500 uppercase tracking-widest leading-none">LevelUp</p>
+              <p className="text-xs font-black text-white font-mono uppercase italic leading-tight">Bắt đầu hành trình</p>
             </div>
           </div>
           <button onClick={onClose} className="text-zinc-600 hover:text-white transition-colors">
