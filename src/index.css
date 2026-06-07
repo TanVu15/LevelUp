@@ -9,6 +9,27 @@
 body {
   background-color: #0F0F12;
   color: #E0E0E0;
+  /* Chặn pull-to-refresh kiểu trình duyệt → cảm giác app thật (mobile-readiness v1) */
+  overscroll-behavior-y: none;
+}
+
+/* Bỏ flash xám khi chạm trên mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Bỏ delay double-tap-zoom trên nút → phản hồi tức thì như app */
+button {
+  touch-action: manipulation;
+}
+
+/* Chống iOS auto-zoom khi focus input (font <16px) — vẫn cho pinch-zoom thủ công */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
 }
 
 /* Custom CSS utilities for the Artistic Flair design theme */

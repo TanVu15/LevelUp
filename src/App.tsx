@@ -633,8 +633,14 @@ export default function App() {
 
       <AppBackdrop themeStyle={themeStyle} />
 
-      {/* Main content */}
-      <div className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+      {/* Main content — safe-area insets so header/footer clear notch + home bar (standalone) */}
+      <div
+        className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8"
+        style={{
+          paddingTop: 'calc(2rem + env(safe-area-inset-top))',
+          paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))',
+        }}
+      >
 
         <AppHeader themeStyle={themeStyle} hunterName={hunterName} level={level} />
 
@@ -661,6 +667,7 @@ export default function App() {
           {(['QUEST', 'TREASURY', 'JOURNEY'] as const).map(tab => {
             const icons = { QUEST: Map, TREASURY: Coins, JOURNEY: History };
             const labels = { QUEST: 'QUEST BOARD (Rèn luyện)', TREASURY: 'TREASURY LEDGER (Chi tiêu)', JOURNEY: 'TIMELINE (Nhật ký)' };
+            const shortLabels = { QUEST: 'QUEST', TREASURY: 'TREASURY', JOURNEY: 'JOURNEY' };
             const Icon = icons[tab];
             return (
               <button key={tab}
@@ -669,7 +676,9 @@ export default function App() {
                   activeTab === tab ? 'bg-orange-600 text-black font-black italic shadow-[0_0_12px_rgba(234,88,12,0.2)]' : 'text-zinc-500 hover:text-neutral-400'
                 }`}
               >
-                <Icon className="w-4 h-4" /> {labels[tab]}
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                <span className="hidden sm:inline truncate">{labels[tab]}</span>
+                <span className="sm:hidden truncate">{shortLabels[tab]}</span>
               </button>
             );
           })}
