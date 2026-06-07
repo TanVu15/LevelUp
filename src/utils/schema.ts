@@ -28,6 +28,8 @@ export interface BackupData {
   logs: DayLog[];
   achievements: Achievement[];
   lastOpenDate: string;
+  avatarUrl?: string | null;            // dataURL — only in JSON backup, not Firestore (1MB limit)
+  bodyPhotos?: Record<string, string>;  // date → dataURL
 }
 
 // ── Migrations ──────────────────────────────────────────────────────────────
@@ -81,6 +83,8 @@ export function validateBackup(raw: unknown): BackupData {
   if (d.tasks.length > 10_000)        throw 'File không hợp lệ: quá nhiều tasks (>10,000).';
   if (d.transactions.length > 50_000) throw 'File không hợp lệ: quá nhiều transactions (>50,000).';
   if (d.logs.length > 3_650)          throw 'File không hợp lệ: quá nhiều logs (>3,650 ngày).';
+  if (d.bodyPhotos && typeof d.bodyPhotos === 'object' && Object.keys(d.bodyPhotos).length > 1_000)
+    throw 'File không hợp lệ: quá nhiều ảnh (>1,000).';
 
   // schemaVersion is optional (legacy backups don't have it) — migrate() handles that
   return migrate(raw);

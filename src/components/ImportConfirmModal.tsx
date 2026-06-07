@@ -59,6 +59,10 @@ export default function ImportConfirmModal({ backup, onConfirm, onCancel }: Impo
               <span className="text-zinc-300">{backup.tasks?.length ?? 0}</span>
             </div>
             <div className="flex justify-between">
+              <span className="text-zinc-500">Số ảnh</span>
+              <span className="text-zinc-300">{(backup.avatarUrl ? 1 : 0) + Object.keys(backup.bodyPhotos ?? {}).length}</span>
+            </div>
+            <div className="flex justify-between">
               <span className="text-zinc-500">Schema version</span>
               <span className="text-zinc-500">v{backup.schemaVersion}</span>
             </div>

@@ -549,6 +549,7 @@ export default function App() {
       onboardingDone, whyCards, monthlyBudgets, routineLabels, routineDescs, dailyRoutines,
       tasks, archivedTasks, transactions, weightLogs, logs, achievements,
       lastOpenDate: localStorage.getItem('ironwill_last_open_date') ?? getTodayDateString(),
+      avatarUrl, bodyPhotos, // ảnh đi kèm file backup (không vào Firestore — xem feat-backup-photos)
     });
   };
 
@@ -579,6 +580,12 @@ export default function App() {
     setWeightLogs(s.weightLogs ?? []);
     setLogs(s.logs ?? []);
     if (s.achievements?.length) setAchievements(s.achievements);
+    // Restore images into IndexedDB + state (overlay; non-destructive of photos not in backup).
+    if (s.avatarUrl) { setAvatarUrl(s.avatarUrl); saveAvatar(s.avatarUrl).catch(() => {}); }
+    if (s.bodyPhotos) {
+      setBodyPhotos(s.bodyPhotos);
+      Object.entries(s.bodyPhotos).forEach(([date, url]) => { saveBodyPhoto(date, url).catch(() => {}); });
+    }
     if (s.lastOpenDate) localStorage.setItem('ironwill_last_open_date', s.lastOpenDate);
     localStorage.setItem('ironwill_schema_version', String(SCHEMA_VERSION));
     setPendingImport(null);

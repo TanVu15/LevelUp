@@ -258,7 +258,7 @@ if (lastOpenYM !== currentYM) { /* trigger MonthlyReviewModal */ }
 - **routineDescs data-loss:** ĐÃ FIX (feat-xp-progression-hardening). `routineDescs` giờ có trong GameState + BackupData + mọi điểm sync/export/import.
 - **xpClaimed migration:** ĐÃ FIX via schema v0→v1 migration trong `utils/schema.ts`. `migrate()` chạy khi mount và khi import.
 - **Playwright screenshot:** luôn dùng fresh context (no localStorage) → thấy onboarding. Đây là hành vi đúng cho user mới
-- **IndexedDB photos không sync Firestore:** `avatarUrl` và `bodyPhotos` chỉ lưu locally (IndexedDB). Export/Import JSON không bao gồm ảnh. Phase 2 task.
+- **IndexedDB photos:** `avatarUrl` và `bodyPhotos` lưu locally (IndexedDB). **Export/Import JSON ĐÃ bao gồm ảnh** (feat-backup-photos) → backup thủ công bảo toàn ảnh. **Cloud sync (Firestore) vẫn CHƯA** (giới hạn 1MB/doc → cần Firebase Storage, Phase 2).
 - **applyGameState không chạy streak logic:** Khi login Firebase, streak/shields từ cloud được apply trực tiếp (không tính lại). Streak chỉ được update bởi mount effect dựa trên localStorage. Cross-device: mount effect đọc `lastOpenDate=null` → skip streak update. Acceptable for MVP.
 - **Archive idempotency (StrictMode):** ĐÃ FIX. Auto-archive (ADR-013) dùng functional update + dedupe theo id → an toàn khi mount effect chạy 2 lần (React 19 StrictMode). Đừng quay lại pattern `setArchivedTasks(prev => [...toArchive, ...prev])` không dedupe.
 - **Migration effect ordering:** ĐÃ FIX. Migration effect dùng `setTasks(prev => migrate({tasks: prev}).tasks)` (functional update trên state) thay vì đọc lại `localStorage` gốc — nếu không sẽ ghi đè kết quả auto-archive của date-reset effect (chạy trước) và resurrect task đã dọn lên board.
