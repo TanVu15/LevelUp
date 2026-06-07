@@ -16,7 +16,7 @@ Data flow: App.tsx (state + handlers) → props → child components → callbac
 
 ```
 src/
-├── App.tsx                    # Root: toàn bộ state, game logic, localStorage I/O
+├── App.tsx                    # Root: state + handlers + effects (đang tách dần ra hooks/ + components/)
 ├── types.ts                   # Shared TypeScript types
 ├── index.css                  # Tailwind v4 directives
 ├── main.tsx                   # Entry point
@@ -28,9 +28,13 @@ src/
 │   ├── LevelUpModal.tsx       # Modal animated khi level-up (thay alert)
 │   ├── MonthlyReviewModal.tsx # Modal hiện đầu tháng mới: kết quả tháng trước + set budget
 │   ├── OnboardingModal.tsx    # Wizard 3 bước cho user mới (WHY card ở step 2)
-│   └── CelebrationToast.tsx   # Toast streak milestone (7/14/21/28 ngày)
+│   ├── CelebrationToast.tsx   # Toast streak milestone (7/14/21/28 ngày)
+│   └── AppChrome.tsx          # Presentational: AppBackdrop/AppHeader/AppFooter (bóc khỏi App.tsx)
 │   # (+ AuthModal, ProfileModal, AvatarCropModal, BootIntro, ImportConfirmModal,
 │   #    TaskHistoryModal, TimelineEntry, PWAInstallPrompt)
+├── hooks/
+│   ├── usePersistedState.ts   # useState ↔ localStorage + codecs (str/int/bool/json)
+│   └── useFirebaseSync.ts     # Auth + Firestore sync (ADR-011), gói gọn khỏi App.tsx
 ├── data/
 │   └── quotes.ts              # 44 quotes (30 discipline + 14 motivation)
 └── utils/

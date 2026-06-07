@@ -14,8 +14,9 @@ import { Task, Transaction, DayLog, Achievement, TaskTier, ExpenseCategory, WhyC
 import { playClickSound, playLevelUpSound, playQuestSuccessSound } from './utils/audio';
 import { loadAvatar, loadAllBodyPhotos, saveAvatar, saveBodyPhoto, deleteBodyPhoto, compressImage } from './utils/imageDB';
 import { isConfigured, auth } from './firebase';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { loadGameState, saveGameState, GameState } from './utils/firestoreSync';
+import { signOut } from 'firebase/auth';
+import { GameState } from './utils/firestoreSync';
+import { useFirebaseSync } from './hooks/useFirebaseSync';
 import AuthModal from './components/AuthModal';
 import ImportConfirmModal from './components/ImportConfirmModal';
 import { exportBackup, migrate, SCHEMA_VERSION, BackupData } from './utils/schema';
@@ -113,7 +114,7 @@ export default function App() {
   const [bodyPhotos, setBodyPhotos] = React.useState<Record<string, string>>({});
 
   // ── AUTH STATE ──────────────────────────────────────────────────────────────
-  const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+  // currentUser is provided by useFirebaseSync (declared after applyGameState below).
   const [showAuthModal, setShowAuthModal] = React.useState<boolean>(() => {
     if (!isConfigured) return false;
     // Show auth gate unless user explicitly chose guest mode (ironwill_guest_mode = 'true').
@@ -256,45 +257,24 @@ export default function App() {
     localStorage.setItem('ironwill_last_open_date', today);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  React.useEffect(() => {
-    if (!isConfigured || !auth) return;
-    return onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      if (user) setShowAuthModal(false); // close auth gate on any login
-      if (!user) return;
-      // Load cloud state; if none, migrate current localStorage state up
-      const cloudState = await loadGameState(user.uid);
-      if (cloudState) {
-        applyGameState(cloudState);
-      } else {
-        // First login — push current local data to Firestore
-        const localState: GameState = {
-          hunterName, level, xp, streak, shields, disciplineMode, soundEnabled,
-          onboardingDone, routineLabels, routineDescs, whyCards, monthlyBudgets, dailyRoutines,
-          tasks, archivedTasks, transactions, weightLogs, logs, achievements,
-          lastOpenDate: localStorage.getItem('ironwill_last_open_date') ?? getTodayDateString(),
-        };
-        await saveGameState(user.uid, localState);
-      }
-    });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Debounced Firestore sync (3s) — only when logged in
-  React.useEffect(() => {
-    if (!currentUser) return;
-    const state: GameState = {
-      hunterName, level, xp, streak, shields, disciplineMode, soundEnabled,
-      onboardingDone, routineLabels, routineDescs, whyCards, monthlyBudgets, dailyRoutines,
-      tasks, archivedTasks, transactions, weightLogs, logs, achievements,
-      lastOpenDate: localStorage.getItem('ironwill_last_open_date') ?? getTodayDateString(),
-    };
-    const t = setTimeout(() => saveGameState(currentUser.uid, state), 3000);
-    return () => clearTimeout(t);
-  }, [ // eslint-disable-line react-hooks/exhaustive-deps
-    currentUser, hunterName, level, xp, streak, shields, disciplineMode, soundEnabled,
+  // Current snapshot for cloud sync. Memoized so its identity changes only when a
+  // real field changes → useFirebaseSync's debounce timer doesn't reset every render.
+  const gameState = React.useMemo<GameState>(() => ({
+    hunterName, level, xp, streak, shields, disciplineMode, soundEnabled,
+    onboardingDone, routineLabels, routineDescs, whyCards, monthlyBudgets, dailyRoutines,
+    tasks, archivedTasks, transactions, weightLogs, logs, achievements,
+    lastOpenDate: localStorage.getItem('ironwill_last_open_date') ?? getTodayDateString(),
+  }), [
+    hunterName, level, xp, streak, shields, disciplineMode, soundEnabled,
     onboardingDone, routineLabels, routineDescs, whyCards, monthlyBudgets, dailyRoutines,
     tasks, archivedTasks, transactions, weightLogs, logs, achievements,
   ]);
+
+  const currentUser = useFirebaseSync({
+    state: gameState,
+    applyState: applyGameState,
+    onUserChange: (user) => { if (user) setShowAuthModal(false); }, // close auth gate on login
+  });
 
   // Persistence is handled per-key by usePersistedState; level/xp by the effect
   // above; schema_version by the migration effect. (Old mega-effect removed.)
