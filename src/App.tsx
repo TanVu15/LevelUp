@@ -24,6 +24,7 @@ import { getTodayDateString, getCurrentYearMonth } from './utils/date';
 import { getRankForLevel, getXpNeeded, applyXpGain, DAILY_TASK_XP_CAP, DAILY_TIER_CAPS } from './utils/xp';
 import { getDailyChallenge, checkChallengeCondition } from './utils/challenge';
 import { getStreakMilestoneMsg, computeStreakRollover } from './utils/streak';
+import { usePersistedState, codecs, Codec } from './hooks/usePersistedState';
 
 // ── PROGRESSION REDUCER ──────────────────────────────────────────────────────
 // {level, xp} live together so multi-level rollover (applyXpGain) is atomic and
@@ -53,10 +54,10 @@ export default function App() {
   });
   const [onboardingDone, setOnboardingDone] = React.useState(!showOnboarding);
 
-  // ── CORE STATE ─────────────────────────────────────────────────────────────
-  const [hunterName, setHunterName] = React.useState<string>(() =>
-    localStorage.getItem('ironwill_hunter_name') || 'Challenger'
-  );
+  // ── CORE STATE (persisted via usePersistedState — key prefix ironwill_) ──────
+  const hunterNameCodec: Codec<string> = { parse: (r) => r || 'Challenger', serialize: (v) => v };
+  const [hunterName, setHunterName] = usePersistedState('ironwill_hunter_name', 'Challenger', hunterNameCodec);
+
   const [{ level, xp }, dispatchProgress] = React.useReducer(
     progressReducer,
     undefined,
@@ -68,79 +69,42 @@ export default function App() {
   // Set true right before a 'set' dispatch (login/import/onboarding) so the
   // level-watching effect doesn't pop a level-up modal for non-gameplay changes.
   const suppressLevelUpRef = React.useRef(false);
-  const [streak, setStreak] = React.useState<number>(() =>
-    parseInt(localStorage.getItem('ironwill_streak') || '0')
-  );
-  const [shields, setShields] = React.useState<number>(() =>
-    parseInt(localStorage.getItem('ironwill_shields') || '0')
-  );
-  const [disciplineMode, setDisciplineMode] = React.useState<boolean>(() => {
-    const saved = localStorage.getItem('ironwill_discipline_mode');
-    return saved !== null ? saved === 'true' : true;
-  });
-  const [soundEnabled, setSoundEnabled] = React.useState<boolean>(() => {
-    const saved = localStorage.getItem('ironwill_sound_enabled');
-    return saved !== null ? saved === 'true' : true;
-  });
-  const [whyCards, setWhyCards] = React.useState<WhyCard[]>(() => {
-    const saved = localStorage.getItem('ironwill_why_cards');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [monthlyBudgets, setMonthlyBudgets] = React.useState<Record<string, number>>(() => {
-    const saved = localStorage.getItem('ironwill_monthly_budgets');
-    return saved ? JSON.parse(saved) : {};
-  });
+  // Persist reducer-owned level/xp (the other state persists itself via the hook).
+  React.useEffect(() => {
+    localStorage.setItem('ironwill_level', String(level));
+    localStorage.setItem('ironwill_xp', String(xp));
+  }, [level, xp]);
+
+  const [streak, setStreak] = usePersistedState('ironwill_streak', 0, codecs.int);
+  const [shields, setShields] = usePersistedState('ironwill_shields', 0, codecs.int);
+  const [disciplineMode, setDisciplineMode] = usePersistedState('ironwill_discipline_mode', true, codecs.bool);
+  const [soundEnabled, setSoundEnabled] = usePersistedState('ironwill_sound_enabled', true, codecs.bool);
+  const [whyCards, setWhyCards] = usePersistedState<WhyCard[]>('ironwill_why_cards', [], codecs.json());
+  const [monthlyBudgets, setMonthlyBudgets] = usePersistedState<Record<string, number>>('ironwill_monthly_budgets', {}, codecs.json());
   const [monthlyReview, setMonthlyReview] = React.useState<MonthlyReviewState | null>(null);
-  const [routineLabels, setRoutineLabels] = React.useState<Record<string, string>>(() => {
-    const saved = localStorage.getItem('ironwill_routine_labels');
-    if (saved) return JSON.parse(saved);
-    return { eat: 'EAT CLEAN', pray: 'CLEAR MIND', train: 'MOVE BODY', study: 'SKILL UP', work: 'DEEP WORK', sleep: 'SLEEP WELL' };
-  });
-  const [routineDescs, setRoutineDescs] = React.useState<Record<string, string>>(() => {
-    const saved = localStorage.getItem('ironwill_routine_descs');
-    return saved ? JSON.parse(saved) : {};
-  });
-  const [dailyRoutines, setDailyRoutines] = React.useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem('ironwill_daily_routines');
-    if (saved) return JSON.parse(saved);
-    return { eat: false, pray: false, train: false, study: false, work: false, sleep: false };
-  });
-  const [tasks, setTasks] = React.useState<Task[]>(() => {
-    const saved = localStorage.getItem('ironwill_tasks');
-    if (saved) return JSON.parse(saved);
-    return [];
-  });
+  const [routineLabels, setRoutineLabels] = usePersistedState<Record<string, string>>(
+    'ironwill_routine_labels',
+    { eat: 'EAT CLEAN', pray: 'CLEAR MIND', train: 'MOVE BODY', study: 'SKILL UP', work: 'DEEP WORK', sleep: 'SLEEP WELL' },
+    codecs.json(),
+  );
+  const [routineDescs, setRoutineDescs] = usePersistedState<Record<string, string>>('ironwill_routine_descs', {}, codecs.json());
+  const [dailyRoutines, setDailyRoutines] = usePersistedState<Record<string, boolean>>(
+    'ironwill_daily_routines',
+    { eat: false, pray: false, train: false, study: false, work: false, sleep: false },
+    codecs.json(),
+  );
+  const [tasks, setTasks] = usePersistedState<Task[]>('ironwill_tasks', [], codecs.json());
   // Tasks auto-dọn từ ngày cũ — không xóa hẳn (đếm achievement + xem Lịch sử)
-  const [archivedTasks, setArchivedTasks] = React.useState<Task[]>(() => {
-    const saved = localStorage.getItem('ironwill_archived_tasks');
-    if (saved) return JSON.parse(saved);
-    return [];
-  });
-  const [transactions, setTransactions] = React.useState<Transaction[]>(() => {
-    const saved = localStorage.getItem('ironwill_transactions');
-    if (saved) return JSON.parse(saved);
-    return [];
-  });
-  const [weightLogs, setWeightLogs] = React.useState<{ date: string; weight: number }[]>(() => {
-    const saved = localStorage.getItem('ironwill_weight_logs');
-    if (saved) return JSON.parse(saved);
-    return [];
-  });
-  const [logs, setLogs] = React.useState<DayLog[]>(() => {
-    const saved = localStorage.getItem('ironwill_logs');
-    if (saved) return JSON.parse(saved);
-    return [];
-  });
-  const [achievements, setAchievements] = React.useState<Achievement[]>(() => {
-    const saved = localStorage.getItem('ironwill_achievements');
-    if (saved) return JSON.parse(saved);
-    return [
-      { id: 'ach1', title: 'CHẶNG ĐƯỜNG KỶ LUẬT',   description: 'Duy trì chuỗi kỷ luật 7 ngày liên tiếp không gián đoạn.',              badge: '🛡️', unlockedAt: null },
-      { id: 'ach2', title: 'APEX BOSS RAID',          description: 'Hoàn thành 5 BOSS RAID — chứng minh bản lĩnh trước thử thách tối thượng.', badge: '👑', unlockedAt: null },
-      { id: 'ach3', title: 'CHỐNG RÒ RỈ HOÀN HẢO',  description: 'Ghi nhận hơn 3 giao dịch mà không có khoản chi discretionary nào.',       badge: '💎', unlockedAt: null },
-      { id: 'ach4', title: 'CHIẾN THẦN THỂ HÌNH',    description: 'Theo dõi cân nặng cơ thể 4 lần — cam kết với hành trình thể hình dài hạn.',badge: '🏋️', unlockedAt: null },
-    ];
-  });
+  const [archivedTasks, setArchivedTasks] = usePersistedState<Task[]>('ironwill_archived_tasks', [], codecs.json());
+  const [transactions, setTransactions] = usePersistedState<Transaction[]>('ironwill_transactions', [], codecs.json());
+  const [weightLogs, setWeightLogs] = usePersistedState<{ date: string; weight: number }[]>('ironwill_weight_logs', [], codecs.json());
+  const [logs, setLogs] = usePersistedState<DayLog[]>('ironwill_logs', [], codecs.json());
+  const [achievements, setAchievements] = usePersistedState<Achievement[]>('ironwill_achievements', [
+    { id: 'ach1', title: 'CHẶNG ĐƯỜNG KỶ LUẬT',   description: 'Duy trì chuỗi kỷ luật 7 ngày liên tiếp không gián đoạn.',              badge: '🛡️', unlockedAt: null },
+    { id: 'ach2', title: 'APEX BOSS RAID',          description: 'Hoàn thành 5 BOSS RAID — chứng minh bản lĩnh trước thử thách tối thượng.', badge: '👑', unlockedAt: null },
+    { id: 'ach3', title: 'CHỐNG RÒ RỈ HOÀN HẢO',  description: 'Ghi nhận hơn 3 giao dịch mà không có khoản chi discretionary nào.',       badge: '💎', unlockedAt: null },
+    { id: 'ach4', title: 'CHIẾN THẦN THỂ HÌNH',    description: 'Theo dõi cân nặng cơ thể 4 lần — cam kết với hành trình thể hình dài hạn.',badge: '🏋️', unlockedAt: null },
+  ], codecs.json());
 
   const [activeTab, setActiveTab] = React.useState<'QUEST' | 'TREASURY' | 'JOURNEY'>('QUEST');
   const [levelUpInfo, setLevelUpInfo] = React.useState<LevelUpInfo | null>(null);
@@ -332,30 +296,8 @@ export default function App() {
     tasks, archivedTasks, transactions, weightLogs, logs, achievements,
   ]);
 
-  // ── PERSISTENCE ────────────────────────────────────────────────────────────
-  React.useEffect(() => {
-    localStorage.setItem('ironwill_hunter_name',    hunterName);
-    localStorage.setItem('ironwill_level',          String(level));
-    localStorage.setItem('ironwill_xp',             String(xp));
-    localStorage.setItem('ironwill_streak',         String(streak));
-    localStorage.setItem('ironwill_shields',        String(shields));
-    localStorage.setItem('ironwill_discipline_mode',String(disciplineMode));
-    localStorage.setItem('ironwill_sound_enabled',  String(soundEnabled));
-    localStorage.setItem('ironwill_why_cards',         JSON.stringify(whyCards));
-    localStorage.setItem('ironwill_monthly_budgets',  JSON.stringify(monthlyBudgets));
-    localStorage.setItem('ironwill_routine_labels', JSON.stringify(routineLabels));
-    localStorage.setItem('ironwill_routine_descs',  JSON.stringify(routineDescs));
-    localStorage.setItem('ironwill_daily_routines', JSON.stringify(dailyRoutines));
-    localStorage.setItem('ironwill_tasks',          JSON.stringify(tasks));
-    localStorage.setItem('ironwill_archived_tasks', JSON.stringify(archivedTasks));
-    localStorage.setItem('ironwill_transactions',   JSON.stringify(transactions));
-    localStorage.setItem('ironwill_weight_logs',    JSON.stringify(weightLogs));
-    localStorage.setItem('ironwill_logs',           JSON.stringify(logs));
-    localStorage.setItem('ironwill_achievements',   JSON.stringify(achievements));
-    localStorage.setItem('ironwill_schema_version', String(SCHEMA_VERSION));
-  }, [hunterName, level, xp, streak, shields, disciplineMode, soundEnabled, whyCards,
-      monthlyBudgets, routineLabels, routineDescs, dailyRoutines, tasks, archivedTasks, transactions,
-      weightLogs, logs, achievements]);
+  // Persistence is handled per-key by usePersistedState; level/xp by the effect
+  // above; schema_version by the migration effect. (Old mega-effect removed.)
 
   // ── XP & LEVEL-UP ─────────────────────────────────────────────────────────
   const xpNeeded = getXpNeeded(level);
