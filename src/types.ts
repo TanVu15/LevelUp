@@ -1,11 +1,24 @@
 export type TaskTier = 'BOSS' | 'DUNGEON' | 'MANA';
 
+export type WhyCardType = 'PAIN' | 'FAILURE' | 'GOAL';
+
+export interface WhyCard {
+  id: string;
+  type: WhyCardType;
+  title: string;
+  story: string;
+}
+
 export interface Task {
   id: string;
   title: string;
   tier: TaskTier;
   completed: boolean;
+  xpClaimed?: boolean;  // true once XP awarded — prevents re-earn on re-toggle
+  claimedAt?: string;   // YYYY-MM-DD — tracks which day XP was claimed (used for daily cap)
+  completedAt?: string; // YYYY-MM-DD — day task was marked done; cleared on un-complete (today-counter + history grouping)
   createdAt: string;
+  dueDate?: string;
 }
 
 export type ExpenseCategory =
@@ -33,15 +46,20 @@ export interface DailyRoutineSetting {
 
 export interface DayLog {
   date: string; // YYYY-MM-DD
-  routines: Record<string, boolean>; // routineId -> completed
+  routines: Record<string, boolean>;
+  routineXpClaimed?: Record<string, boolean>; // routineId → XP already given today
+  overdriveXpClaimed?: boolean;               // OVERDRIVE bonus already given today
+  taskXpEarned?: number;                      // cumulative task XP earned today (cap enforcement — survives task deletion)
+  taskCountByTier?: Partial<Record<TaskTier, number>>; // XP-earning completions per tier today (per-tier cap enforcement)
+  dailyChallengeClaimed?: boolean;            // true once today's challenge XP is claimed
   note: string;
-  weight?: number; // Optional gym status weight
+  weight?: number;
 }
 
 export interface Achievement {
   id: string;
   title: string;
   description: string;
-  badge: string; // Emoji or short symbol
+  badge: string;
   unlockedAt: string | null;
 }

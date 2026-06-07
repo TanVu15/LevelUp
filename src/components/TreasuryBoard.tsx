@@ -6,7 +6,10 @@ import {
   Trash2,
   Coins,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  Pencil,
+  Check,
+  X
 } from 'lucide-react';
 import { Transaction, ExpenseCategory } from '../types';
 import { playClickSound, playQuestSuccessSound } from '../utils/audio';
@@ -16,7 +19,8 @@ interface TreasuryBoardProps {
   addTransaction: (title: string, amount: number, type: 'INCOME' | 'EXPENSE', category: ExpenseCategory | 'Income Source') => void;
   deleteTransaction: (id: string) => void;
   soundEnabled: boolean;
-  addXP: (amount: number) => void;
+  currentMonthBudget: number;
+  setCurrentMonthBudget: (amount: number) => void;
 }
 
 export default function TreasuryBoard({
@@ -24,13 +28,28 @@ export default function TreasuryBoard({
   addTransaction,
   deleteTransaction,
   soundEnabled,
-  addXP
+  currentMonthBudget,
+  setCurrentMonthBudget,
 }: TreasuryBoardProps) {
-  // Budget Form inputs
+  // Transaction form
   const [title, setTitle] = React.useState('');
   const [amountStr, setAmountStr] = React.useState('');
   const [type, setType] = React.useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [category, setCategory] = React.useState<ExpenseCategory | 'Income Source'>('Gym & Nutrition');
+
+  // Budget editing
+  const [editingBudget, setEditingBudget] = React.useState(false);
+  const [budgetInputStr, setBudgetInputStr] = React.useState('');
+
+  // Monthly filter
+  const currentYMNow = new Date().toISOString().slice(0, 7);
+  const last4Months = Array.from({ length: 4 }, (_, i) => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    return d.toISOString().slice(0, 7);
+  });
+  const [selectedMonth, setSelectedMonth] = React.useState<string>(currentYMNow);
 
   // Update default category when type switches
   React.useEffect(() => {
@@ -41,23 +60,38 @@ export default function TreasuryBoard({
     }
   }, [type]);
 
-  // Aggregate metrics
-  const totalIncome = transactions
+  // Filtered transactions for selected month
+  const filteredTransactions = transactions.filter(t => t.date.startsWith(selectedMonth));
+
+  // Aggregate metrics (scoped to selected month)
+  const totalIncome = filteredTransactions
     .filter(t => t.type === 'INCOME')
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const totalExpense = transactions
+  const totalExpense = filteredTransactions
     .filter(t => t.type === 'EXPENSE')
     .reduce((sum, t) => sum + t.amount, 0);
 
   const netBalance = totalIncome - totalExpense;
 
   // Leak calculations
-  const totalLeaks = transactions
+  const totalLeaks = filteredTransactions
     .filter(t => t.type === 'EXPENSE' && t.category === 'Unnecessary Leaks')
     .reduce((sum, t) => sum + t.amount, 0);
 
   const leakPercentage = totalExpense > 0 ? Math.round((totalLeaks / totalExpense) * 100) : 0;
+
+  const leakLabel = leakPercentage >= 25
+    ? 'OPTIMIZE YOUR BUDGET'
+    : leakPercentage > 0
+      ? 'SPENDING REVIEW'
+      : 'TREASURY FLOW SECURE';
+
+  const leakMessage = leakPercentage >= 25
+    ? 'Discretionary spend đang chiếm tỷ lệ cao. Đây là cơ hội tốt để xem xét và điều chỉnh — mỗi đồng tối ưu hóa là một bước gần hơn đến tự do tài chính.'
+    : leakPercentage > 0
+      ? 'Một số khoản chi có thể được tối ưu thêm. Không sao cả — nhận ra là bước đầu tiên để cải thiện.'
+      : 'Hệ thống xác nhận: dòng tiền đang được quản lý hiệu quả. Tiếp tục duy trì đà tốt này!';
 
   // Formatting helper for currency
   const formatVND = (value: number) => {
@@ -81,9 +115,6 @@ export default function TreasuryBoard({
 
     addTransaction(title.trim(), parsedAmount, type, category);
 
-    // Give XP bonus for tracking financial status!
-    addXP(10);
-
     // Reset fields
     setTitle('');
     setAmountStr('');
@@ -104,7 +135,7 @@ export default function TreasuryBoard({
   ];
 
   const categoryTotals = expenseCategories.map(cat => {
-    const total = transactions
+    const total = filteredTransactions
       .filter(t => t.type === 'EXPENSE' && t.category === cat)
       .reduce((sum, t) => sum + t.amount, 0);
     return { name: cat, total };
@@ -112,10 +143,108 @@ export default function TreasuryBoard({
 
   const maxCategoryTotal = Math.max(...categoryTotals.map(c => c.total), 1);
 
+  // Category breakdown sorted by amount (for the breakdown pills)
+  const categoryBreakdown = categoryTotals
+    .filter(c => c.total > 0)
+    .sort((a, b) => b.total - a.total);
+
+  // Budget progress bar — only for current month
+  const currentMonthLabel = (() => { const d = new Date(); return `Tháng ${d.getMonth() + 1}/${d.getFullYear()}`; })();
+  const isCurrentMonth = selectedMonth === currentYMNow;
+  // currentMonthSpend = expenses in the current calendar month (not the selected filter month)
+  const currentMonthSpend = transactions
+    .filter(t => t.type === 'EXPENSE' && t.date.startsWith(currentYMNow))
+    .reduce((sum, t) => sum + t.amount, 0);
+  const budgetRemaining  = currentMonthBudget - currentMonthSpend;
+  const budgetUsedPct    = currentMonthBudget > 0 ? Math.min(100, Math.round((currentMonthSpend / currentMonthBudget) * 100)) : 0;
+  const budgetBarColor   = budgetUsedPct >= 90 ? 'bg-rose-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'
+                         : budgetUsedPct >= 70 ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]'
+                         : 'bg-emerald-500 shadow-[0_0_6px_rgba(52,211,153,0.3)]';
+
+  const handleBudgetSave = () => {
+    const parsed = parseFloat(budgetInputStr.replace(/[^0-9]/g, ''));
+    if (!isNaN(parsed) && parsed > 0) setCurrentMonthBudget(parsed);
+    setEditingBudget(false);
+  };
+
+  // Income trajectory — by month
+  const incomeByMonth: Record<string, number> = {};
+  transactions.filter(t => t.type === 'INCOME').forEach(t => {
+    const ym = t.date.slice(0, 7);
+    incomeByMonth[ym] = (incomeByMonth[ym] || 0) + t.amount;
+  });
+  const incomeMonths   = Object.keys(incomeByMonth).sort().slice(-6);
+  const maxMonthIncome = Math.max(...incomeMonths.map(k => incomeByMonth[k]), 1);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
       {/* LEFT PANEL: Core Cashflow Meters & Spend Visualizer (7 cols) */}
       <div className="lg:col-span-7 space-y-6">
+
+        {/* ── BUDGET CHALLENGE ─────────────────────────────────────────────── */}
+        <div className="bg-zinc-900/45 border border-white/10 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xs font-bold font-mono tracking-widest text-orange-500 uppercase">// BUDGET CHALLENGE</h2>
+              <p className="text-sm font-bold text-white mt-0.5">{currentMonthLabel}</p>
+            </div>
+            {!editingBudget && (
+              <button
+                onClick={() => { setBudgetInputStr(currentMonthBudget > 0 ? String(currentMonthBudget) : ''); setEditingBudget(true); }}
+                className="flex items-center gap-1.5 text-[10px] font-mono text-zinc-500 hover:text-orange-400 transition-colors uppercase tracking-widest"
+              >
+                <Pencil className="w-3 h-3" />
+                {currentMonthBudget > 0 ? 'Chỉnh' : 'Đặt budget'}
+              </button>
+            )}
+          </div>
+
+          {editingBudget ? (
+            <div className="flex items-center gap-2">
+              <Coins className="w-4 h-4 text-orange-500 flex-shrink-0" />
+              <input
+                autoFocus
+                type="text"
+                inputMode="numeric"
+                value={budgetInputStr ? Number(budgetInputStr).toLocaleString('vi-VN') : ''}
+                onChange={e => setBudgetInputStr(e.target.value.replace(/[^0-9]/g, ''))}
+                onKeyDown={e => { if (e.key === 'Enter') handleBudgetSave(); if (e.key === 'Escape') setEditingBudget(false); }}
+                placeholder="Nhập budget tháng này (VND)"
+                className="flex-1 bg-black/60 border border-white/10 focus:border-orange-500 focus:outline-none rounded-lg px-3 py-2 text-sm text-neutral-200 font-mono transition-colors"
+              />
+              <button onClick={handleBudgetSave} className="p-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-black transition-colors"><Check className="w-3.5 h-3.5" /></button>
+              <button onClick={() => setEditingBudget(false)} className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 transition-colors"><X className="w-3.5 h-3.5" /></button>
+            </div>
+          ) : currentMonthBudget > 0 ? (
+            <div className="space-y-3">
+              <div className="flex justify-between text-xs font-mono">
+                <span className="text-zinc-400">Đã chi: <span className="text-rose-400 font-bold">{formatVND(currentMonthSpend)}</span></span>
+                <span className={`font-bold ${budgetRemaining >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {budgetRemaining >= 0 ? 'Còn lại' : 'Vượt'}: {formatVND(Math.abs(budgetRemaining))}
+                </span>
+              </div>
+              <div className="w-full h-3 bg-zinc-950 rounded-lg p-[1px] border border-white/5 overflow-hidden">
+                <div
+                  className={`h-full rounded-sm transition-all duration-500 ${budgetBarColor}`}
+                  style={{ width: `${budgetUsedPct}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] font-mono text-zinc-500">
+                <span>{budgetUsedPct}% đã dùng</span>
+                <span>Budget: {formatVND(currentMonthBudget)}</span>
+              </div>
+              {budgetUsedPct >= 90 && (
+                <p className="text-[10px] font-mono text-rose-400 bg-rose-950/20 border border-rose-800/30 rounded-lg px-3 py-2">
+                  ⚠ Gần chạm giới hạn! Cân nhắc kỹ các khoản chi còn lại trong tháng.
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs font-mono text-zinc-600 py-2">
+              Chưa có budget cho tháng này. Đặt giới hạn chi tiêu để nhận XP thưởng cuối tháng!
+            </p>
+          )}
+        </div>
 
         {/* Cashflow Dashboard Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -181,23 +310,15 @@ export default function TreasuryBoard({
             <div className="flex-1">
               <div className="flex justify-between items-center">
                 <h4 className="text-sm font-bold font-mono tracking-wider uppercase text-neutral-100">
-                  {leakPercentage >= 25 ? "WARNING: LEAK ALARM LEVEL RED" : leakPercentage > 0 ? "LEAK ANALYSIS WARNING" : "TREASURY LEAK STATUS SECURE"}
+                  {leakLabel}
                 </h4>
                 <span className={`text-xs font-mono font-bold ${
-                  leakPercentage >= 25 ? 'text-red-400' : leakPercentage > 0 ? 'text-amber-400' : 'text-emerald-400'
+                  leakPercentage >= 25 ? 'text-amber-400' : leakPercentage > 0 ? 'text-amber-400' : 'text-emerald-400'
                 }`}>
-                  {leakPercentage}% LEAKS
+                  {leakPercentage}% discretionary
                 </span>
               </div>
-              <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
-                {leakPercentage >= 25 ? (
-                  "CẢNH BÁO: Bro đang đốt quá nhiều ngân sách vào các khoản chi phí không cần thiết! Lỗ rò rỉ này sẽ hủy hoại con đường tự do tài chính. Cam kết cắt giảm ngay lập tức!"
-                ) : leakPercentage > 0 ? (
-                  "Chỉ số rò rỉ đang nằm ở mức kiểm soát trung bình. Cố gắng dọn dẹp các chi phí vô bổ để tối ưu tài nguyên rèn luyện."
-                ) : (
-                  "Hệ thống thông báo hoàn hảo: Không phát hiện lỗ rò rỉ vô ích nào! Bro đang bảo toàn năng lượng tài chính cực tốt."
-                )}
-              </p>
+              <p className="text-xs text-zinc-400 mt-2 leading-relaxed">{leakMessage}</p>
             </div>
           </div>
         </div>
@@ -218,7 +339,7 @@ export default function TreasuryBoard({
                   <div className="flex justify-between text-xs font-mono text-zinc-300">
                     <span className="flex items-center gap-1.5">
                       <span className={`w-2.5 h-2.5 rounded-full ${isLeak ? 'bg-red-500' : 'bg-orange-500'}`}></span>
-                      {catObj.name === 'Unnecessary Leaks' ? 'Unnecessary Leaks (Lỗ rò rỉ ❌)' : catObj.name}
+                      {catObj.name === 'Unnecessary Leaks' ? 'Discretionary Spend (Tùy ý)' : catObj.name}
                     </span>
                     <span className="font-bold">{formatVND(catObj.total)}</span>
                   </div>
@@ -239,6 +360,63 @@ export default function TreasuryBoard({
             })}
           </div>
         </div>
+
+        {/* ── INCOME TRAJECTORY ────────────────────────────────────────────── */}
+        {incomeMonths.length > 0 && (
+          <div className="bg-zinc-900/45 border border-white/10 rounded-xl p-6">
+            <h2 className="text-xs font-bold font-mono tracking-widest text-orange-500 mb-1 uppercase">// INCOME TRAJECTORY</h2>
+            <p className="text-[10px] font-mono text-zinc-600 mb-5">Thu nhập theo tháng (đơn vị: triệu VND)</p>
+            <svg viewBox={`0 0 300 90`} className="w-full" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="incomeBar" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#ea580c" stopOpacity="0.9" />
+                  <stop offset="100%" stopColor="#c2410c" stopOpacity="0.5" />
+                </linearGradient>
+              </defs>
+              {(() => {
+                const n      = incomeMonths.length;
+                const BAR_W  = Math.min(38, 260 / (n * 1.8));
+                const GAP    = (300 - BAR_W * n) / (n + 1);
+                const MAX_H  = 62;
+
+                return incomeMonths.map((ym, i) => {
+                  const val   = incomeByMonth[ym];
+                  const barH  = Math.max(4, (val / maxMonthIncome) * MAX_H);
+                  const x     = GAP + i * (BAR_W + GAP);
+                  const y     = MAX_H - barH;
+                  const [, mo] = ym.split('-');
+                  const isLatest = i === n - 1;
+                  const prev     = i > 0 ? incomeByMonth[incomeMonths[i - 1]] : null;
+                  const trend    = prev !== null ? (val > prev ? '↑' : val < prev ? '↓' : '→') : null;
+
+                  return (
+                    <g key={ym}>
+                      <rect x={x} y={y} width={BAR_W} height={barH} rx="3"
+                        fill={isLatest ? '#ea580c' : 'url(#incomeBar)'} opacity={isLatest ? 1 : 0.65} />
+                      {/* Value label */}
+                      <text x={x + BAR_W / 2} y={y - 5} textAnchor="middle"
+                        fill={isLatest ? '#fdba74' : '#71717a'} fontSize="7.5" fontFamily="monospace" fontWeight="bold">
+                        {(val / 1_000_000).toFixed(1)}M
+                      </text>
+                      {/* Month label */}
+                      <text x={x + BAR_W / 2} y={78} textAnchor="middle"
+                        fill={isLatest ? '#ea580c' : '#52525b'} fontSize="9" fontFamily="monospace">
+                        T{parseInt(mo)}
+                      </text>
+                      {/* Trend arrow */}
+                      {trend && trend !== '→' && (
+                        <text x={x + BAR_W / 2} y={88} textAnchor="middle"
+                          fill={trend === '↑' ? '#34d399' : '#f87171'} fontSize="8" fontFamily="monospace">
+                          {trend}
+                        </text>
+                      )}
+                    </g>
+                  );
+                });
+              })()}
+            </svg>
+          </div>
+        )}
 
         {/* Quick Transaction Adding Form */}
         <div className="bg-zinc-900/45 border border-white/10 rounded-xl p-6">
@@ -313,7 +491,7 @@ export default function TreasuryBoard({
                     <option value="Work & Gear">Công cụ & Gear</option>
                     <option value="Books & Growth">Sách x Phát Triển</option>
                     <option value="Rent & Utilities">Shelter & Sinh hoạt</option>
-                    <option value="Unnecessary Leaks">Rò Rỉ Vô Bổ (Leaks)</option>
+                    <option value="Unnecessary Leaks">Discretionary (Tùy ý)</option>
                   </select>
                 ) : (
                   <select
@@ -342,13 +520,83 @@ export default function TreasuryBoard({
             // SECURE TRANSACTION LEDGER
           </h2>
 
+          {/* ── Budget Progress Bar (current month only) ─────────────────────── */}
+          {isCurrentMonth && currentMonthBudget > 0 && (
+            <div className="mb-5 p-4 bg-black/30 border border-white/5 rounded-xl space-y-2">
+              <div className="flex justify-between text-xs font-mono">
+                <span className="text-zinc-400">
+                  Đã chi: <span className="text-rose-400 font-bold">{currentMonthSpend.toLocaleString('vi-VN')} ₫</span>
+                </span>
+                <span className={`font-bold ${budgetRemaining >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {budgetRemaining >= 0 ? `Còn ${(100 - budgetUsedPct)}%` : 'Vượt ngân sách'}: {Math.abs(budgetRemaining).toLocaleString('vi-VN')} ₫
+                </span>
+              </div>
+              <div className="w-full h-2.5 bg-zinc-950 rounded-lg overflow-hidden border border-white/5">
+                <div
+                  className={`h-full rounded-sm transition-all duration-500 ${budgetBarColor}`}
+                  style={{ width: `${budgetUsedPct}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] font-mono text-zinc-500">
+                <span>{budgetUsedPct}% đã dùng</span>
+                <span>Budget: {currentMonthBudget.toLocaleString('vi-VN')} ₫</span>
+              </div>
+            </div>
+          )}
+
+          {/* ── Monthly Filter Tabs ───────────────────────────────────────────── */}
+          <div className="flex gap-2 mb-4 flex-wrap">
+            {last4Months.map(ym => {
+              const label = new Date(ym + '-01').toLocaleDateString('vi-VN', { month: 'short', year: 'numeric' });
+              const isActive = ym === selectedMonth;
+              return (
+                <button
+                  key={ym}
+                  onClick={() => setSelectedMonth(ym)}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-bold transition-colors ${
+                    isActive
+                      ? 'bg-orange-600 text-black font-black'
+                      : 'bg-zinc-900 border border-white/5 text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── Category Spending Breakdown ───────────────────────────────────── */}
+          {categoryBreakdown.length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-2">
+              {categoryBreakdown.map(c => {
+                const pct = totalExpense > 0 ? Math.round((c.total / totalExpense) * 100) : 0;
+                const isLeak = c.name === 'Unnecessary Leaks';
+                return (
+                  <div
+                    key={c.name}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono border ${
+                      isLeak
+                        ? 'bg-rose-950/30 border-rose-800/40 text-rose-300'
+                        : 'bg-zinc-900/80 border-white/5 text-zinc-300'
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${isLeak ? 'bg-rose-500' : 'bg-orange-500'}`} />
+                    <span className="truncate max-w-[100px]">{c.name}</span>
+                    <span className="font-bold text-white">{c.total.toLocaleString('vi-VN')} ₫</span>
+                    <span className="text-zinc-500">({pct}%)</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-            {transactions.length === 0 ? (
+            {filteredTransactions.length === 0 ? (
               <div className="text-center py-8 text-neutral-500 text-xs font-mono">
-                CHƯA GHI NHẬN SỔ SÁCH NÀO. HÃY THIẾT LẬP DÒNG TIỀN ĐẦU TIÊN CỦA BẠN.
+                KHÔNG CÓ GIAO DỊCH NÀO TRONG THÁNG NÀY.
               </div>
             ) : (
-              [...transactions].reverse().map((t) => (
+              [...filteredTransactions].reverse().map((t) => (
                 <div
                   key={t.id}
                   className="bg-black/40 border border-neutral-800/60 p-3 rounded-xl flex items-center justify-between gap-3"

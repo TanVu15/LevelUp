@@ -7,3 +7,7 @@ dist-ssr
 .DS_Store
 *.log
 .vite
+
+# Claude Code local config & repo bundle backups
+.claude/
+*.bundle
