@@ -188,7 +188,7 @@ interface Achievement {
 **Không chọn:** Per-transaction XP volume → reward chi tiêu nhiều = backwards psychology
 
 ### ADR-013: Daily Task Auto-Archive
-**Quyết định:** Sang ngày mới, task ngày cũ tự dọn khỏi board → đẩy vào `archivedTasks` (KHÔNG xóa hẳn). Board mặc định chỉ hiện việc còn-liên-quan-tới-hôm-nay (incomplete có `dueDate >= today`). Task hoàn thành trong ngày fold vào dòng collapse "Đã hoàn thành: X hôm nay". Nút "Lịch sử" mở `TaskHistoryModal` (read-only, nhóm theo ngày).
+**Quyết định:** Sang ngày mới, task ngày cũ tự dọn khỏi board → đẩy vào `archivedTasks` (KHÔNG xóa hẳn). **(Cập nhật 2026-06-07)** Trong ngày, tier hiện CẢ việc chưa làm LẪN việc đã tick hôm nay (đã tick → gạch ngang, mờ, **dồn xuống cuối** tier) — giữ "phần thưởng dấu tick" tại chỗ; qua ngày mới rollover mới archive. Dòng "Đã hoàn thành: X hôm nay" giờ là nhãn tĩnh (bỏ collapse, vì task đã hiện tại chỗ). Nút "Lịch sử" mở `TaskHistoryModal` (read-only, nhóm theo ngày).
 **Rollover rule (mount date-reset effect):** giữ lại ⇔ `!completed && dueDate >= today`; archive phần còn lại (completed bất kể deadline, hoặc incomplete quá hạn / không deadline).
 **Lý do:** Board sạch tạo cảm giác fresh-start mỗi ngày (chống clutter). Archive thay vì delete để `totalTasksCompleted` + achievement (ach2 = 5 BOSS) vẫn đếm đúng — các counter này tính trên `[...tasks, ...archivedTasks]`. Thêm `Task.completedAt` để xác định "hoàn thành hôm nay" + nhóm lịch sử.
 **Sync:** `archivedTasks?` có trong GameState (Firestore) + BackupData (Export/Import), default `[]`. localStorage key `ironwill_archived_tasks`.

@@ -27,14 +27,21 @@ THE `Task` SHALL có field optional `completedAt?: string` (YYYY-MM-DD).
 - Xóa (undefined) khi task bị un-complete.
 - Dùng cho bộ đếm "Đã hoàn thành hôm nay" + nhóm theo ngày trong Lịch sử.
 
-### REQ-04 — Board chỉ hiện việc còn-liên-quan
-THE QuestBoard tier list (BOSS/DUNGEON/MANA) SHALL chỉ render task `!completed`.
-Task đã hoàn thành trong ngày được fold vào một dòng collapse riêng.
+### REQ-04 — Board hiện việc trong ngày, việc đã xong xếp cuối *(sửa 2026-06-07)*
+THE QuestBoard tier list (BOSS/DUNGEON/MANA) SHALL render CẢ task `!completed` LẪN task
+`completed` của hôm nay (vẫn còn trong `tasks`, chưa bị rollover archive).
+- Task `!completed` hiển thị trước (giữ thứ tự), task `completed` **dồn xuống cuối** mỗi tier,
+  style gạch ngang + mờ (đã có sẵn trong render), bấm check để bỏ-đánh-dấu.
+- **Lý do đổi:** thấy dấu tick tại chỗ là phần thưởng tức thì (ADR-006). Bản cũ ẩn ngay task vừa
+  tick gây hụt hẫng + giấu mất reward. "Board sạch" vẫn đạt được vì rollover qua ngày mới sẽ archive
+  (REQ-01 không đổi).
+- **[CŨ — đã thay]** trước đây tier chỉ render `!completed`, task xong fold vào collapse riêng.
 
-### REQ-05 — Dòng "Đã hoàn thành: X hôm nay" (collapsible)
-THE QuestBoard SHALL hiển thị một dòng nhỏ `✓ Đã hoàn thành: {X} hôm nay`,
-mặc định collapse, click để xem danh sách task hoàn thành hôm nay
-(`completed && (completedAt === today || claimedAt === today)`).
+### REQ-05 — Dòng "Đã hoàn thành: X hôm nay" + Lịch sử *(sửa 2026-06-07)*
+THE QuestBoard SHALL hiển thị một dòng tĩnh `✓ Đã hoàn thành: {X} hôm nay`
+(X = `completed && (completedAt === today || claimedAt === today)`) + link "Lịch sử".
+KHÔNG còn collapse/expand danh sách task xong (chúng đã hiện tại chỗ trong tier theo REQ-04)
+→ tránh hiển thị trùng. `completedExpanded` state bị loại bỏ.
 
 ### REQ-06 — Link "Lịch sử"
 THE QuestBoard SHALL có link "Lịch sử" mở modal read-only liệt kê `archivedTasks`

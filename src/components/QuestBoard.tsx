@@ -2,7 +2,7 @@ import React from 'react';
 import {
   Check, Plus, Trash2, Sparkles, Play, Square, Zap, Award,
   CheckSquare, SquareTerminal, Dumbbell, DollarSign, BookOpen,
-  Utensils, Moon, Map, Pencil, ChevronDown, History
+  Utensils, Moon, Map, Pencil, History
 } from 'lucide-react';
 import { Task, TaskTier, WhyCard, WhyCardType } from '../types';
 import { playClickSound, playQuestSuccessSound, playTimerEndSound } from '../utils/audio';
@@ -67,7 +67,6 @@ export default function QuestBoard({
   const [tempLabel, setTempLabel] = React.useState('');
   const [tempDesc, setTempDesc] = React.useState('');
   const [showHistory, setShowHistory] = React.useState(false);
-  const [completedExpanded, setCompletedExpanded] = React.useState(false);
 
   // WHY card editing
   const [editingSlot, setEditingSlot] = React.useState<number | null>(null);
@@ -203,9 +202,13 @@ export default function QuestBoard({
     setEditingSlot(null);
   };
 
-  // Board chỉ hiện việc còn-liên-quan: task chưa hoàn thành (REQ-04).
-  // Task đã xong fold vào dòng collapse "Đã hoàn thành hôm nay".
-  const getTasksByTier = (tier: TaskTier) => tasks.filter(t => t.tier === tier && !t.completed);
+  // REQ-04: tier hiện cả việc chưa làm lẫn việc đã tick hôm nay (đã tick dồn xuống cuối,
+  // gạch ngang). Qua ngày mới rollover mới archive (REQ-01). Completed trong `tasks` đều là
+  // của hôm nay (việc xong ngày cũ đã bị archive).
+  const getTasksByTier = (tier: TaskTier) => {
+    const inTier = tasks.filter(t => t.tier === tier);
+    return [...inTier.filter(t => !t.completed), ...inTier.filter(t => t.completed)];
+  };
   const completedToday = tasks.filter(t => t.completed && (t.completedAt === getTodayStr() || t.claimedAt === getTodayStr()));
 
   const tierConfig = {
@@ -742,20 +745,16 @@ export default function QuestBoard({
           );
         })}
 
-        {/* Đã hoàn thành hôm nay (collapse) + Lịch sử */}
+        {/* Đã hoàn thành hôm nay (nhãn tĩnh — task xong đã hiện tại chỗ trong tier) + Lịch sử */}
         <div className="border-t border-white/5 pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <button
-            onClick={() => { if (completedToday.length === 0) return; if (soundEnabled) playClickSound(); setCompletedExpanded(v => !v); }}
-            className={`flex items-center gap-2 text-xs font-mono transition-colors ${
-              completedToday.length > 0 ? 'text-emerald-400/80 hover:text-emerald-400' : 'text-zinc-600 cursor-default'
+          <span
+            className={`flex items-center gap-2 text-xs font-mono ${
+              completedToday.length > 0 ? 'text-emerald-400/80' : 'text-zinc-600'
             }`}
           >
             <span className="text-emerald-500">✓</span>
             Đã hoàn thành: <span className="font-bold">{completedToday.length}</span> hôm nay
-            {completedToday.length > 0 && (
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${completedExpanded ? 'rotate-180' : ''}`} />
-            )}
-          </button>
+          </span>
           <button
             onClick={() => { if (soundEnabled) playClickSound(); setShowHistory(true); }}
             className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-500 hover:text-orange-400 transition-colors self-start sm:self-auto"
@@ -763,30 +762,6 @@ export default function QuestBoard({
             <History className="w-3.5 h-3.5" /> Lịch sử
           </button>
         </div>
-
-        {completedExpanded && completedToday.length > 0 && (
-          <div className="space-y-2 -mt-4">
-            {completedToday.map(task => (
-              <div key={task.id} className="flex items-center gap-3 p-3 rounded-lg bg-zinc-950/40 border border-white/5">
-                <button
-                  onClick={() => handleTaskToggle(task.id, task.completed)}
-                  className="w-4 h-4 rounded border border-emerald-500 bg-emerald-600/80 text-black flex items-center justify-center flex-shrink-0"
-                  title="Bỏ đánh dấu hoàn thành"
-                >
-                  <Check className="w-3 h-3 stroke-[3]" />
-                </button>
-                <span className="text-sm flex-1 min-w-0 truncate text-zinc-500 line-through">{task.title}</span>
-                <span className="text-[9px] font-mono text-zinc-600 flex-shrink-0">{task.tier}</span>
-                <button
-                  onClick={() => deleteTask(task.id)}
-                  className="p-1 rounded hover:bg-zinc-900 text-zinc-600 hover:text-red-400 transition-colors flex-shrink-0"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {showHistory && <TaskHistoryModal archivedTasks={archivedTasks} onClose={() => setShowHistory(false)} />}
