@@ -3,9 +3,9 @@ import { X, Mail, Lock, Zap, LogIn, UserPlus } from 'lucide-react';
 import {
   GoogleAuthProvider, signInWithPopup,
   signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  AuthError,
 } from 'firebase/auth';
-import { auth } from '../firebase';
+import type { Auth, AuthError } from 'firebase/auth';
+import { loadFirebase } from '../firebase';
 import { warmupAudio } from '../utils/audio';
 
 interface AuthModalProps {
@@ -48,12 +48,20 @@ export default function AuthModal({ onClose }: AuthModalProps) {
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [loading, setLoading]                 = React.useState(false);
   const [error, setError]                     = React.useState('');
+  const [auth, setAuth]                       = React.useState<Auth | null>(null);
 
   const clearError = () => setError('');
 
   React.useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  React.useEffect(() => {
+    let mounted = true;
+    const p = loadFirebase();
+    if (p) p.then(fb => { if (mounted) setAuth(fb.auth); });
+    return () => { mounted = false; };
   }, []);
 
   const handleGoogle = async () => {

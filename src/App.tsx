@@ -13,11 +13,10 @@ import MonthlyReviewModal, { MonthlyReviewState } from './components/MonthlyRevi
 import { Task, Transaction, DayLog, Achievement, TaskTier, ExpenseCategory, WhyCard } from './types';
 import { playClickSound, playLevelUpSound, playQuestSuccessSound } from './utils/audio';
 import { loadAvatar, loadAllBodyPhotos, saveAvatar, saveBodyPhoto, deleteBodyPhoto, compressImage } from './utils/imageDB';
-import { isConfigured, auth } from './firebase';
-import { signOut } from 'firebase/auth';
+import { isConfigured, loadFirebase } from './firebase';
 import { GameState } from './utils/firestoreSync';
 import { useFirebaseSync } from './hooks/useFirebaseSync';
-import AuthModal from './components/AuthModal';
+const AuthModal = React.lazy(() => import('./components/AuthModal'));
 import ImportConfirmModal from './components/ImportConfirmModal';
 import { exportBackup, migrate, SCHEMA_VERSION, BackupData } from './utils/schema';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
@@ -523,8 +522,13 @@ export default function App() {
   };
 
   const handleSignOut = async () => {
-    if (!auth) return;
-    try { await signOut(auth); } catch { /* ignore */ }
+    const fb = isConfigured ? await loadFirebase() : null;
+    if (fb) {
+      try {
+        const { signOut } = await import('firebase/auth');
+        await signOut(fb.auth);
+      } catch { /* ignore */ }
+    }
     // Clear all local game data so next session starts fresh (includes ironwill_guest_mode)
     Object.keys(localStorage)
       .filter(k => k.startsWith('ironwill_'))
@@ -640,7 +644,11 @@ export default function App() {
           onShowAuth={() => setShowAuthModal(true)}
           onSignOut={handleSignOut}
         />
-        {showAuthModal && <AuthModal onClose={handleCloseAuthModal} />}
+        {showAuthModal && (
+          <React.Suspense fallback={null}>
+            <AuthModal onClose={handleCloseAuthModal} />
+          </React.Suspense>
+        )}
 
         <nav className="grid grid-cols-3 gap-2 bg-zinc-900/80 p-1.5 rounded-xl border border-white/10">
           {(['QUEST', 'TREASURY', 'JOURNEY'] as const).map(tab => {

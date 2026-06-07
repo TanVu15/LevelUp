@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { isConfigured, auth } from '../firebase';
+import type { User } from 'firebase/auth';
+import { isConfigured, loadFirebase } from '../firebase';
 import { loadGameState, saveGameState, GameState } from '../utils/firestoreSync';
 
 // Owns Firebase auth + Firestore sync, extracted from App.tsx (ADR-011).
@@ -24,16 +24,24 @@ export function useFirebaseSync({ state, applyState, onUserChange }: UseFirebase
   onUserChangeRef.current = onUserChange;
 
   useEffect(() => {
-    if (!isConfigured || !auth) return;
-    return onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      onUserChangeRef.current?.(user);
-      if (!user) return;
-      // Load cloud state; if none exists yet, push current local data up (first login).
-      const cloudState = await loadGameState(user.uid);
-      if (cloudState) applyRef.current(cloudState);
-      else await saveGameState(user.uid, stateRef.current);
-    });
+    if (!isConfigured) return;
+    let cancelled = false;
+    let unsub = () => {};
+    (async () => {
+      const fb = await loadFirebase();
+      if (!fb || cancelled) return;
+      const { onAuthStateChanged } = await import('firebase/auth');
+      unsub = onAuthStateChanged(fb.auth, async (user) => {
+        setCurrentUser(user);
+        onUserChangeRef.current?.(user);
+        if (!user) return;
+        // Load cloud state; if none exists yet, push current local data up (first login).
+        const cloudState = await loadGameState(user.uid);
+        if (cloudState) applyRef.current(cloudState);
+        else await saveGameState(user.uid, stateRef.current);
+      });
+    })();
+    return () => { cancelled = true; unsub(); };
   }, []);
 
   // Debounced sync (3s) — only when logged in. `state` identity is stable across

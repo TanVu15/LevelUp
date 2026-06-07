@@ -1,6 +1,11 @@
-import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import type { FirebaseApp } from 'firebase/app';
+import type { Auth } from 'firebase/auth';
+import type { Firestore } from 'firebase/firestore';
+
+// Firebase is loaded lazily so the SDK stays out of the initial bundle — guests
+// who never sign in never download it. `import type` above is erased at build, so
+// nothing here pulls firebase into the main chunk. See
+// .sdd/specs/feat-lazy-firebase/SPEC.md.
 
 export const isConfigured = !!(
   import.meta.env.VITE_FIREBASE_API_KEY &&
@@ -16,15 +21,30 @@ const firebaseConfig = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID              ?? '',
 };
 
-let _app: FirebaseApp | null = null;
-let _auth: Auth | null = null;
-let _db: Firestore | null = null;
-
-if (isConfigured) {
-  _app  = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-  _auth = getAuth(_app);
-  _db   = getFirestore(_app);
+export interface FirebaseInstance {
+  app: FirebaseApp;
+  auth: Auth;
+  db: Firestore;
 }
 
-export const auth = _auth;
-export const db   = _db;
+let _instance: Promise<FirebaseInstance> | null = null;
+
+/**
+ * Lazily import + initialize Firebase. Returns null if not configured (guest-only
+ * build). The promise is cached so concurrent callers share one initialization.
+ */
+export function loadFirebase(): Promise<FirebaseInstance> | null {
+  if (!isConfigured) return null;
+  if (!_instance) {
+    _instance = (async () => {
+      const [{ initializeApp, getApps }, { getAuth }, { getFirestore }] = await Promise.all([
+        import('firebase/app'),
+        import('firebase/auth'),
+        import('firebase/firestore'),
+      ]);
+      const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+      return { app, auth: getAuth(app), db: getFirestore(app) };
+    })();
+  }
+  return _instance;
+}

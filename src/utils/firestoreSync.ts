@@ -1,5 +1,4 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db, isConfigured } from '../firebase';
+import { isConfigured, loadFirebase } from '../firebase';
 import { Task, Transaction, DayLog, Achievement, WhyCard } from '../types';
 
 export interface GameState {
@@ -32,9 +31,12 @@ function isValidGameState(data: unknown): data is GameState {
 }
 
 export async function loadGameState(uid: string): Promise<GameState | null> {
-  if (!isConfigured || !db) return null;
+  if (!isConfigured) return null;
   try {
-    const snap = await getDoc(doc(db, 'users', uid));
+    const fb = await loadFirebase();
+    if (!fb) return null;
+    const { doc, getDoc } = await import('firebase/firestore');
+    const snap = await getDoc(doc(fb.db, 'users', uid));
     if (!snap.exists()) return null;
     const data = snap.data();
     if (!isValidGameState(data)) return null;
@@ -45,9 +47,12 @@ export async function loadGameState(uid: string): Promise<GameState | null> {
 }
 
 export async function saveGameState(uid: string, state: GameState): Promise<void> {
-  if (!isConfigured || !db) return;
+  if (!isConfigured) return;
   try {
-    await setDoc(doc(db, 'users', uid), state);
+    const fb = await loadFirebase();
+    if (!fb) return;
+    const { doc, setDoc } = await import('firebase/firestore');
+    await setDoc(doc(fb.db, 'users', uid), state);
   } catch {
     // Silently ignore — app works offline, next save will retry
   }
