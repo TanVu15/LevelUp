@@ -82,10 +82,10 @@ export default function StatusHeader({
   };
 
   return (
-    <div className="p-8 rounded-xl bg-zinc-900/45 border border-white/10 transition-all duration-500">
+    <div className="p-5 sm:p-8 rounded-xl bg-zinc-900/45 border border-white/10 transition-all duration-500">
       {/* Upper row */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-3 sm:gap-5 min-w-0">
           {/* Crop modal */}
           {cropSrc && (
             <AvatarCropModal
@@ -114,7 +114,7 @@ export default function StatusHeader({
             />
           )}
           <div
-            className={`relative w-16 h-16 rounded-xl flex-shrink-0 select-none cursor-pointer group ${RANK_FRAME[rank] ?? RANK_FRAME['E-Rank']}`}
+            className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl flex-shrink-0 select-none cursor-pointer group ${RANK_FRAME[rank] ?? RANK_FRAME['E-Rank']}`}
             onClick={() => setShowProfile(true)}
             title="Xem profile"
           >
@@ -138,14 +138,14 @@ export default function StatusHeader({
           </div>
 
           {/* Rank badge */}
-          <div className={`w-16 h-16 rounded-full border flex flex-col items-center justify-center p-1 bg-black font-mono font-bold text-lg select-none flex-shrink-0 ${getRankColor(rank)}`}>
+          <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full border flex flex-col items-center justify-center p-1 bg-black font-mono font-bold text-lg select-none flex-shrink-0 ${getRankColor(rank)}`}>
             <span className="text-[9px] uppercase text-zinc-500 tracking-wider">Rank</span>
             <span className="leading-tight italic text-xl font-black">{rank.split('-')[0]}</span>
           </div>
 
           {/* Name + level */}
-          <div>
-            <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
               {isEditingName ? (
                 <div className="flex items-center gap-1">
                   <input
@@ -161,7 +161,7 @@ export default function StatusHeader({
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-black text-white font-sans tracking-tight uppercase italic">{hunterName}</h1>
+                  <h1 className="text-xl sm:text-2xl font-black text-white font-sans tracking-tight uppercase italic break-words min-w-0">{hunterName}</h1>
                   <button
                     onClick={() => { setIsEditingName(true); setTempName(hunterName); }}
                     className="text-[10px] uppercase text-orange-500 hover:text-orange-400 font-mono"
@@ -172,8 +172,8 @@ export default function StatusHeader({
                 LVL {level}
               </span>
             </div>
-            <p className="text-xs text-zinc-400 mt-1.5 font-mono uppercase tracking-widest flex items-center gap-1.5">
-              <Zap className="w-3.5 h-3.5 text-orange-500 animate-pulse" /> Ascendant Sovereignty
+            <p className="text-xs text-zinc-400 mt-1.5 font-mono uppercase tracking-widest flex items-center gap-1.5 min-w-0">
+              <Zap className="w-3.5 h-3.5 text-orange-500 animate-pulse flex-shrink-0" /> <span className="break-words">Ascendant Sovereignty</span>
             </p>
           </div>
         </div>

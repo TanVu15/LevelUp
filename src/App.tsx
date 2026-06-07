@@ -630,6 +630,11 @@ export default function App() {
       <LevelUpModal info={levelUpInfo} onClose={() => setLevelUpInfo(null)} />
       <CelebrationToast message={toastMsg} onClose={() => setToastMsg(null)} />
       <MonthlyReviewModal review={monthlyReview} onConfirm={handleMonthlyReviewConfirm} />
+      {showAuthModal && (
+        <React.Suspense fallback={null}>
+          <AuthModal onClose={handleCloseAuthModal} />
+        </React.Suspense>
+      )}
 
       <AppBackdrop themeStyle={themeStyle} />
 
@@ -657,11 +662,6 @@ export default function App() {
           onShowAuth={() => setShowAuthModal(true)}
           onSignOut={handleSignOut}
         />
-        {showAuthModal && (
-          <React.Suspense fallback={null}>
-            <AuthModal onClose={handleCloseAuthModal} />
-          </React.Suspense>
-        )}
 
         <nav className="grid grid-cols-3 gap-2 bg-zinc-900/80 p-1.5 rounded-xl border border-white/10">
           {(['QUEST', 'TREASURY', 'JOURNEY'] as const).map(tab => {

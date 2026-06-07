@@ -607,27 +607,36 @@ export default function QuestBoard({
         <div className="bg-zinc-900/45 border border-white/10 rounded-xl p-6">
           <h2 className="text-xs font-bold font-mono tracking-widest text-orange-500 mb-4 uppercase">// QUEUE NEW QUESTS</h2>
           <form onSubmit={handleTaskSubmit} className="space-y-3">
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex gap-3">
               <input
                 type="text" value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 placeholder="Nhập nhiệm vụ mới... (Ví dụ: Code xong API giao dịch)"
-                className="flex-1 bg-black/60 border border-white/5 hover:border-white/10 focus:border-orange-500 focus:outline-none rounded-lg px-4 py-3 text-sm text-neutral-200 transition-colors"
+                className="flex-1 min-w-0 bg-black/60 border border-white/5 hover:border-white/10 focus:border-orange-500 focus:outline-none rounded-lg px-4 py-3 text-sm text-neutral-200 transition-colors"
               />
-              <div className="flex gap-2">
-                <select
-                  value={newTaskTier}
-                  onChange={(e) => setNewTaskTier(e.target.value as TaskTier)}
-                  className="bg-zinc-950 border border-white/5 focus:border-orange-500 focus:outline-none rounded-lg px-3 py-3 text-xs text-neutral-300 hover:border-white/10 font-mono"
+              <button type="submit" className="bg-orange-600 text-black hover:bg-orange-500 border border-orange-600/40 px-4 sm:px-5 py-3 rounded-lg flex items-center justify-center gap-1 text-sm font-black italic uppercase transition-colors flex-shrink-0">
+                <Plus className="w-4 h-4 text-black" /> Add
+              </button>
+            </div>
+            {/* Tier picker — segmented control thay native <select> (đẹp + hợp mobile) */}
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { tier: 'BOSS' as TaskTier,    name: 'BOSS RAID', diff: 'Khó', active: 'border-rose-500/70 bg-rose-950/30 text-rose-300' },
+                { tier: 'DUNGEON' as TaskTier, name: 'DUNGEON',   diff: 'Vừa', active: 'border-orange-500/70 bg-orange-950/30 text-orange-300' },
+                { tier: 'MANA' as TaskTier,    name: 'MANA FARM', diff: 'Dễ',  active: 'border-emerald-500/70 bg-emerald-950/30 text-emerald-300' },
+              ]).map(o => (
+                <button
+                  key={o.tier}
+                  type="button"
+                  onClick={() => { if (soundEnabled) playClickSound(); setNewTaskTier(o.tier); }}
+                  className={`rounded-lg border px-2 py-2.5 text-center transition-all ${
+                    newTaskTier === o.tier ? o.active : 'border-white/5 bg-black/40 text-zinc-500 hover:border-white/15'
+                  }`}
                 >
-                  <option value="BOSS">BOSS RAID (Hard)</option>
-                  <option value="DUNGEON">DUNGEON (Medium)</option>
-                  <option value="MANA">MANA FARM (Easy)</option>
-                </select>
-                <button type="submit" className="bg-orange-600 text-black hover:bg-orange-500 border border-orange-600/40 px-5 py-3 rounded-lg flex items-center justify-center gap-1 text-sm font-black italic uppercase transition-colors">
-                  <Plus className="w-4 h-4 text-black" /> Add
+                  <span className="block text-[11px] font-mono font-bold uppercase tracking-wide truncate">{o.name}</span>
+                  <span className="block text-[9px] font-mono opacity-70">{o.diff} · +{tierConfig[o.tier].xp} XP</span>
                 </button>
-              </div>
+              ))}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest whitespace-nowrap">Deadline:</label>

@@ -472,8 +472,9 @@ export default function TreasuryBoard({
                 <label className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 block">Amount (VND)</label>
                 <input
                   type="text"
-                  value={amountStr}
-                  onChange={(e) => setAmountStr(e.target.value)}
+                  inputMode="numeric"
+                  value={amountStr ? Number(amountStr).toLocaleString('vi-VN') : ''}
+                  onChange={(e) => setAmountStr(e.target.value.replace(/[^0-9]/g, ''))}
                   placeholder="350.000"
                   className="w-full bg-black/60 border border-white/5 focus:border-orange-500 focus:outline-none rounded-lg px-4 py-3 text-sm text-neutral-100 font-mono"
                   required
