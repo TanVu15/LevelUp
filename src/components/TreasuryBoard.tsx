@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Transaction, ExpenseCategory } from '../types';
 import { playClickSound, playQuestSuccessSound } from '../utils/audio';
+import { getCurrentYearMonth, toISODate } from '../utils/date';
 
 interface TreasuryBoardProps {
   transactions: Transaction[];
@@ -42,12 +43,12 @@ export default function TreasuryBoard({
   const [budgetInputStr, setBudgetInputStr] = React.useState('');
 
   // Monthly filter
-  const currentYMNow = new Date().toISOString().slice(0, 7);
+  const currentYMNow = getCurrentYearMonth();
   const last4Months = Array.from({ length: 4 }, (_, i) => {
     const d = new Date();
     d.setDate(1);
     d.setMonth(d.getMonth() - i);
-    return d.toISOString().slice(0, 7);
+    return toISODate(d).slice(0, 7); // local YYYY-MM (toISOString would drift a month for UTC+ zones)
   });
   const [selectedMonth, setSelectedMonth] = React.useState<string>(currentYMNow);
 

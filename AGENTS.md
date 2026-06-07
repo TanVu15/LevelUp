@@ -26,7 +26,7 @@ App.tsx               ← Root state, tất cả handlers, game logic
 StatusHeader.tsx      ← Avatar, EXP bar, streak, shields, mindset toggle
 QuestBoard.tsx        ← Routines, timer, WHY panel, quest tiers, due dates
 TreasuryBoard.tsx     ← Finance tracker, budget bar, income SVG chart, coaching-tone spending review
-JourneyLogs.tsx       ← Streak grid, weekly comparison, note, weight chart
+Timeline.tsx          ← Tab JOURNEY: streak heatmap, weight chart, note, Export/Import (thay JourneyLogs đã xoá)
 LevelUpModal.tsx      ← Animated modal thay alert() — export LevelUpInfo type
 MonthlyReviewModal.tsx← Modal đầu tháng: kết quả tháng trước + set budget tháng mới — export MonthlyReviewState
 OnboardingModal.tsx   ← Wizard 3 bước, gọi onComplete(name: string, task: string, whyCard: WhyCard)

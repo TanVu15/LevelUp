@@ -4,8 +4,8 @@ import { DayLog, Achievement } from '../types';
 import { playQuestSuccessSound } from '../utils/audio';
 import { BackupData, validateBackup } from '../utils/schema';
 import TimelineEntry, { Entry } from './TimelineEntry';
+import { getTodayDateString, toISODate } from '../utils/date';
 
-const getTodayDateString = () => new Date().toISOString().split('T')[0];
 const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 const isISO = (s: string) => ISO_RE.test(s);
 
@@ -103,13 +103,6 @@ function subDays(date: Date, days: number): Date {
   return d;
 }
 
-function toISO(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 interface HeatCell {
   date: string;
   score: number;
@@ -129,7 +122,7 @@ function StreakHeatmap({ logs }: { logs: DayLog[] }) {
   const cells = React.useMemo((): HeatCell[] => {
     const todayDate = new Date();
     todayDate.setHours(0, 0, 0, 0);
-    const todayISO = toISO(todayDate);
+    const todayISO = toISODate(todayDate);
 
     const dow = todayDate.getDay(); // 0=Sun
     const sinceMon = dow === 0 ? 6 : dow - 1;
@@ -139,7 +132,7 @@ function StreakHeatmap({ logs }: { logs: DayLog[] }) {
     const result: HeatCell[] = [];
     for (let i = 0; i < 84; i++) {
       const d = subDays(start, -i);
-      const iso = toISO(d);
+      const iso = toISODate(d);
       result.push({
         date: iso,
         score: scoreMap[iso] ?? 0,

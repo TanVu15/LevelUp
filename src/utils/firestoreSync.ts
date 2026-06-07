@@ -12,6 +12,7 @@ export interface GameState {
   soundEnabled: boolean;
   onboardingDone: boolean;
   routineLabels: Record<string, string>;
+  routineDescs?: Record<string, string>; // custom routine descriptions — optional for backward compat
   whyCards: WhyCard[];
   monthlyBudgets: Record<string, number>;
   dailyRoutines: Record<string, boolean>;

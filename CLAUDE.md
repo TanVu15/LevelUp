@@ -24,16 +24,28 @@ src/
 │   ├── StatusHeader.tsx       # Avatar, rank, EXP bar, streak, shields, mindset toggle
 │   ├── QuestBoard.tsx         # Daily routines, focus timer, WHY panel, quest tiers
 │   ├── TreasuryBoard.tsx      # Finance tracker, budget tracking, income chart
-│   ├── JourneyLogs.tsx        # Streak grid, weekly comparison, note, weight chart
+│   ├── Timeline.tsx           # Tab JOURNEY: streak heatmap, weight chart, note, Export/Import
 │   ├── LevelUpModal.tsx       # Modal animated khi level-up (thay alert)
 │   ├── MonthlyReviewModal.tsx # Modal hiện đầu tháng mới: kết quả tháng trước + set budget
 │   ├── OnboardingModal.tsx    # Wizard 3 bước cho user mới (WHY card ở step 2)
 │   └── CelebrationToast.tsx   # Toast streak milestone (7/14/21/28 ngày)
+│   # (+ AuthModal, ProfileModal, AvatarCropModal, BootIntro, ImportConfirmModal,
+│   #    TaskHistoryModal, TimelineEntry, PWAInstallPrompt)
 ├── data/
 │   └── quotes.ts              # 44 quotes (30 discipline + 14 motivation)
 └── utils/
-    └── audio.ts               # Web Audio API: click, success, levelup, timer
+    ├── audio.ts               # Web Audio API: click, success, levelup, timer
+    ├── date.ts                # Timezone-safe LOCAL date helpers (KHÔNG dùng toISOString cho ngày)
+    ├── xp.ts                  # Pure: getXpNeeded, getRankForLevel, applyXpGain, caps (ADR-008/009)
+    ├── streak.ts              # Pure: computeStreakRollover, getStreakMilestoneMsg (ADR-006)
+    ├── challenge.ts           # Pure: daily challenge pick + condition check
+    ├── schema.ts              # Export/Import + schema versioning + migrate (ADR-012)
+    ├── firestoreSync.ts       # GameState load/save (ADR-011)
+    ├── imageDB.ts             # IndexedDB cho avatar + body photos
+    └── __tests__/            # Vitest: date, xp, streak, challenge (33 tests)
 ```
+
+**Pure logic ở `utils/` (date/xp/streak/challenge) — không React/state/localStorage → unit-test được.**
 
 ## KEY DATA STRUCTURES (xem types.ts)
 
@@ -229,18 +241,24 @@ if (lastOpenYM !== currentYM) { /* trigger MonthlyReviewModal */ }
 - **Đừng call addXP khi routine toggle ON mà không check `routineXpClaimed`** — re-earn exploit
 - **Đừng trigger OVERDRIVE bonus mà không check `overdriveXpClaimed`** — farm exploit
 - Đừng gọi setState lồng trong setState functional update nếu có thể tránh
+- **Đừng đặt side-effect (setState khác / sound / setTimeout) bên trong functional updater hoặc reducer** — progression `{level,xp}` đi qua `progressReducer` THUẦN, level-up modal/sound nằm ở effect theo dõi `level`
+- **Đừng dùng `toISOString()` để lấy ngày/tháng hiện tại** — UTC bug cho UTC+ zones. Dùng `utils/date.ts` (`getTodayDateString`/`getCurrentYearMonth`/`addDays`)
+- **Đừng quên field mới ở MỌI điểm sync** — thêm field vào state thì phải thêm vào `GameState` (firestoreSync), `BackupData` (schema), `applyGameState`, first-login push, debounced sync, `handleExport`, `handleImportConfirm` (bài học `routineDescs`)
 
 ## KNOWN ISSUES & WORKAROUNDS
 - **Tailwind v4 class purging:** dùng full class string thay vì template literal (`bg-orange-500` không phải `` `bg-${color}-500` ``)
 - **Web Audio context:** cần user gesture trước khi play — đã có try/catch, không crash
-- **Nested setState trong mount effect:** `setStreak` / `setShields` được gọi trực tiếp (không nested functional update) — OK trong React 18 batching
+- **Nested setState trong mount effect:** `setStreak` / `setShields` được gọi trực tiếp (không nested functional update) — OK trong React 18 batching. Logic streak giờ tính qua `computeStreakRollover` (pure, có test).
+- **Timezone (UTC off-by-one):** ĐÃ FIX (feat-timezone-safety). Mọi ngày tính theo LOCAL qua `utils/date.ts`. Trước đây UTC+7 trong 00:00–07:00 bị lệch 1 ngày (streak/cap/reset sai). Một lần chuyển đổi có thể gây 1 rollover thừa cho user mở sáng sớm — xem SPEC edge case.
+- **addXP single-level + side-effect trong updater:** ĐÃ FIX (feat-xp-progression-hardening). `applyXpGain` lên nhiều level (`while`), `{level,xp}` qua `useReducer` thuần, level-up modal ở effect (suppress khi login/import). Đừng quay lại `setLevel`/`setTimeout` trong `setXp` updater.
+- **routineDescs data-loss:** ĐÃ FIX (feat-xp-progression-hardening). `routineDescs` giờ có trong GameState + BackupData + mọi điểm sync/export/import.
 - **xpClaimed migration:** ĐÃ FIX via schema v0→v1 migration trong `utils/schema.ts`. `migrate()` chạy khi mount và khi import.
 - **Playwright screenshot:** luôn dùng fresh context (no localStorage) → thấy onboarding. Đây là hành vi đúng cho user mới
 - **IndexedDB photos không sync Firestore:** `avatarUrl` và `bodyPhotos` chỉ lưu locally (IndexedDB). Export/Import JSON không bao gồm ảnh. Phase 2 task.
 - **applyGameState không chạy streak logic:** Khi login Firebase, streak/shields từ cloud được apply trực tiếp (không tính lại). Streak chỉ được update bởi mount effect dựa trên localStorage. Cross-device: mount effect đọc `lastOpenDate=null` → skip streak update. Acceptable for MVP.
 - **Archive idempotency (StrictMode):** ĐÃ FIX. Auto-archive (ADR-013) dùng functional update + dedupe theo id → an toàn khi mount effect chạy 2 lần (React 19 StrictMode). Đừng quay lại pattern `setArchivedTasks(prev => [...toArchive, ...prev])` không dedupe.
 - **Migration effect ordering:** ĐÃ FIX. Migration effect dùng `setTasks(prev => migrate({tasks: prev}).tasks)` (functional update trên state) thay vì đọc lại `localStorage` gốc — nếu không sẽ ghi đè kết quả auto-archive của date-reset effect (chạy trước) và resurrect task đã dọn lên board.
-- **Import mồ côi:** ĐÃ FIX (feat-export-import SPEC). UI Import từng ở `JourneyLogs.tsx` nhưng tab JOURNEY đã chuyển sang `Timeline.tsx` → Import không truy cập được. Đã port nút Import + file input + `validateBackup` sang Timeline, wire `onImportRequest={handleImportRequest}`. ⚠️ **`JourneyLogs.tsx` hiện là DEAD CODE** (không import ở đâu) — Timeline thay thế hoàn toàn. Có thể xoá trong cleanup sau.
+- **Import mồ côi:** ĐÃ FIX (feat-export-import SPEC). UI Import từng ở `JourneyLogs.tsx` nhưng tab JOURNEY đã chuyển sang `Timeline.tsx`. Đã port nút Import + file input + `validateBackup` sang Timeline, wire `onImportRequest={handleImportRequest}`. **`JourneyLogs.tsx` đã được XOÁ** (dead code, Timeline thay thế hoàn toàn).
 
 ## CURRENT SPRINT FOCUS
 **Tech Debt Sprint.** Auth (ADR-011) + Export/Import (ADR-012) đã implement.
@@ -248,10 +266,14 @@ if (lastOpenYM !== currentYM) { /* trigger MonthlyReviewModal */ }
 Tiến độ Tech Debt Brief:
 - [x] Task 1: Export/Import JSON backup (ADR-012) — `utils/schema.ts`, `ImportConfirmModal.tsx`, Timeline tab
 - [x] Task 2: Schema versioning + migration — `SCHEMA_VERSION=1`, `migrate()`, mount effect
-- [ ] Task 3: Tách pure logic ra `utils/` (xp.ts, streak.ts, transition.ts, date.ts)
-- [ ] Task 4: Unit tests với Vitest
-- [ ] Task 5: Idempotency cho mount effect (React 19 StrictMode)
-- [ ] Task 6: Timezone safety
+- [x] Task 3: Tách pure logic ra `utils/` — `date.ts`, `xp.ts`, `streak.ts`, `challenge.ts` (feat-pure-logic-extraction)
+- [x] Task 4: Unit tests với Vitest — 33 tests, `npm test` (feat-unit-tests)
+- [x] Task 5: Idempotency cho mount effect (React 19 StrictMode) — đã fix trước đó (xem Known Issues archive/migration)
+- [x] Task 6: Timezone safety — `utils/date.ts` local-only, bỏ UTC `toISOString` (feat-timezone-safety)
+
+Hardening bổ sung (feat-xp-progression-hardening):
+- [x] `applyXpGain` multi-level (fix `if`→`while`), progression qua `useReducer`, level-up modal chuyển ra effect (hết side-effect trong updater)
+- [x] `routineDescs` sync Firestore + Export/Import (hết data-loss âm thầm)
 
 Roadmap v0.4.0:
 - [ ] PWA support (Service Worker, install prompt)

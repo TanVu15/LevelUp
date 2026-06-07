@@ -8,9 +8,8 @@ import { Task, TaskTier, WhyCard, WhyCardType } from '../types';
 import { playClickSound, playQuestSuccessSound, playTimerEndSound } from '../utils/audio';
 import { Quote, QUOTES } from '../data/quotes';
 import TaskHistoryModal from './TaskHistoryModal';
-
-// Mirror of App.tsx DAILY_TIER_CAPS — update both if changing values
-const DAILY_TIER_CAPS: Record<TaskTier, number> = { BOSS: 2, DUNGEON: 4, MANA: 5 };
+import { getTodayDateString, addDays } from '../utils/date';
+import { DAILY_TIER_CAPS } from '../utils/xp';
 
 interface QuestBoardProps {
   tasks: Task[];
@@ -63,7 +62,7 @@ export default function QuestBoard({
 }: QuestBoardProps) {
   const [newTaskTitle, setNewTaskTitle] = React.useState('');
   const [newTaskTier, setNewTaskTier] = React.useState<TaskTier>('DUNGEON');
-  const [newDueDate, setNewDueDate] = React.useState(() => new Date().toISOString().split('T')[0]);
+  const [newDueDate, setNewDueDate] = React.useState(() => getTodayDateString());
   const [editingLabelId, setEditingLabelId] = React.useState<string | null>(null);
   const [tempLabel, setTempLabel] = React.useState('');
   const [tempDesc, setTempDesc] = React.useState('');
@@ -128,20 +127,13 @@ export default function QuestBoard({
   const completedRoutinesCount = DEFAULT_ROUTINES.filter(r => dailyRoutines[r.id]).length;
   const hasCompletedAllRoutines = completedRoutinesCount === DEFAULT_ROUTINES.length;
 
-  const getTodayStr   = () => new Date().toISOString().split('T')[0];
-  const getTomorrowStr = () => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
-  };
+  const getTodayStr    = () => getTodayDateString();
+  const getTomorrowStr = () => addDays(getTodayDateString(), 1);
   const getEndOfWeekStr = () => {
-    const d   = new Date();
-    const day = d.getDay(); // 0=Sun, 1=Mon...5=Fri, 6=Sat
+    const day = new Date().getDay(); // 0=Sun, 1=Mon...5=Fri, 6=Sat
     // Target: Friday of current week. If Sat/Sun, use coming Friday.
     const daysToFriday = day === 0 ? 5 : day <= 5 ? 5 - day : 6;
-    const target = new Date(d);
-    target.setDate(d.getDate() + daysToFriday);
-    return target.toISOString().split('T')[0];
+    return addDays(getTodayDateString(), daysToFriday);
   };
   const getTaskBadge = (task: Task): { label: string; cls: string } | null => {
     const today = getTodayStr();

@@ -19,84 +19,25 @@ import AuthModal from './components/AuthModal';
 import ImportConfirmModal from './components/ImportConfirmModal';
 import { exportBackup, migrate, SCHEMA_VERSION, BackupData } from './utils/schema';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
+import { getTodayDateString, getCurrentYearMonth } from './utils/date';
+import { getRankForLevel, getXpNeeded, applyXpGain, DAILY_TASK_XP_CAP, DAILY_TIER_CAPS } from './utils/xp';
+import { getDailyChallenge, checkChallengeCondition } from './utils/challenge';
+import { getStreakMilestoneMsg, computeStreakRollover } from './utils/streak';
 
-const getTodayDateString = () => new Date().toISOString().split('T')[0];
+// ── PROGRESSION REDUCER ──────────────────────────────────────────────────────
+// {level, xp} live together so multi-level rollover (applyXpGain) is atomic and
+// the reducer stays PURE — no setState/sound/setTimeout inside it (those live in
+// a level-watching effect). See .sdd/specs/feat-xp-progression-hardening/SPEC.md.
+interface Progress { level: number; xp: number; }
+type ProgressAction =
+  | { type: 'addXp'; amount: number }
+  | { type: 'set'; level: number; xp: number };
 
-const getRankForLevel = (lvl: number): string => {
-  if (lvl >= 51) return 'S-Rank';
-  if (lvl >= 36) return 'A-Rank';
-  if (lvl >= 21) return 'B-Rank';
-  if (lvl >= 11) return 'C-Rank';
-  if (lvl >= 6)  return 'D-Rank';
-  return 'E-Rank';
-};
-
-// Piecewise XP curve — calibrated to psychological habit formation milestones:
-// E+D rank: ~18 days, ~66 days (Lally habit threshold) at 100 XP/day
-// C: ~7 months · B: ~1.5 years · A: ~2.7 years · S: ongoing
-const getXpNeeded = (lvl: number): number => {
-  if (lvl <= 10) return lvl * 120;
-  if (lvl <= 20) return lvl * 100;
-  if (lvl <= 35) return lvl * 80;
-  if (lvl <= 50) return lvl * 65;
-  return lvl * 50;
-};
-
-const DAILY_TASK_XP_CAP = 150;
-
-// Per-tier daily completion caps — prevents single-tier quantity abuse
-// (e.g. 15 MANA tasks = 150 XP becomes 5 MANA tasks = 50 XP max)
-const DAILY_TIER_CAPS: Record<string, number> = { BOSS: 2, DUNGEON: 4, MANA: 5 };
-
-interface DailyChallenge {
-  id: string;
-  title: string;
-  desc: string;
-  xp: number;
-  type: 'routines_min' | 'routines_all' | 'boss_task' | 'dungeon_tasks_min' | 'any_tasks_min';
-  threshold: number;
+function progressReducer(state: Progress, action: ProgressAction): Progress {
+  if (action.type === 'set') return { level: action.level, xp: action.xp };
+  const res = applyXpGain(state.xp, state.level, action.amount);
+  return { level: res.level, xp: res.xp };
 }
-
-const DAILY_CHALLENGES: DailyChallenge[] = [
-  { id: 'ch1', title: 'TRIPLE PROTOCOL',   desc: 'Hoàn thành ít nhất 3 Routines hôm nay',      xp: 25, type: 'routines_min',      threshold: 3 },
-  { id: 'ch2', title: 'OVERDRIVE MODE',    desc: 'Hoàn thành cả 6 Routines trong ngày',         xp: 40, type: 'routines_all',       threshold: 6 },
-  { id: 'ch3', title: 'BOSS RAID CLEARED', desc: 'Hoàn thành ít nhất 1 Boss Raid hôm nay',      xp: 35, type: 'boss_task',          threshold: 1 },
-  { id: 'ch4', title: 'GRIND DAY',         desc: 'Hoàn thành ít nhất 3 nhiệm vụ bất kỳ',        xp: 20, type: 'any_tasks_min',      threshold: 3 },
-  { id: 'ch5', title: 'DUNGEON CLEAR',     desc: 'Hoàn thành 2 Dungeon Gate hôm nay',           xp: 30, type: 'dungeon_tasks_min',  threshold: 2 },
-  { id: 'ch6', title: 'IRON DISCIPLINE',   desc: 'Hoàn thành ít nhất 4 Routines hôm nay',       xp: 30, type: 'routines_min',      threshold: 4 },
-  { id: 'ch7', title: 'BOSS RAID BLITZ',   desc: 'Hoàn thành 2 Boss Raid hôm nay',              xp: 50, type: 'boss_task',          threshold: 2 },
-];
-
-function getDailyChallenge(dateStr: string): DailyChallenge {
-  const hash = [...dateStr].reduce((acc, c) => acc * 31 + c.charCodeAt(0), 7);
-  return DAILY_CHALLENGES[Math.abs(hash) % DAILY_CHALLENGES.length];
-}
-
-function checkChallengeCondition(
-  challenge: DailyChallenge,
-  dailyRoutines: Record<string, boolean>,
-  tasks: Task[],
-  today: string,
-): boolean {
-  const completedRoutines = Object.values(dailyRoutines).filter(Boolean).length;
-  const todayCompleted = tasks.filter(t => t.completed && t.claimedAt === today);
-  switch (challenge.type) {
-    case 'routines_min':     return completedRoutines >= challenge.threshold;
-    case 'routines_all':     return completedRoutines >= 6;
-    case 'boss_task':        return todayCompleted.filter(t => t.tier === 'BOSS').length >= challenge.threshold;
-    case 'dungeon_tasks_min':return todayCompleted.filter(t => t.tier === 'DUNGEON').length >= challenge.threshold;
-    case 'any_tasks_min':    return todayCompleted.length >= challenge.threshold;
-    default:                 return false;
-  }
-}
-
-const getStreakMilestoneMsg = (n: number): string => {
-  if (n === 7)  return '🔥 7 NGÀY STREAK — Habit đang hình thành trong não bộ!';
-  if (n === 14) return '⚡ 14 NGÀY — Hai tuần không gục ngã. Pattern mới đang cài đặt!';
-  if (n === 21) return '👑 21 NGÀY — Mốc vàng của habit formation theo khoa học thần kinh!';
-  if (n === 28) return '🏆 28 NGÀY — Một tháng kỷ luật tuyệt đối. Bạn đã chứng minh được!';
-  return `🌟 ${n} NGÀY STREAK — Tiếp tục chiến đấu, không dừng lại!`;
-};
 
 export default function App() {
   // ── ONBOARDING ─────────────────────────────────────────────────────────────
@@ -115,12 +56,17 @@ export default function App() {
   const [hunterName, setHunterName] = React.useState<string>(() =>
     localStorage.getItem('ironwill_hunter_name') || 'Challenger'
   );
-  const [level, setLevel] = React.useState<number>(() =>
-    parseInt(localStorage.getItem('ironwill_level') || '1')
+  const [{ level, xp }, dispatchProgress] = React.useReducer(
+    progressReducer,
+    undefined,
+    (): Progress => ({
+      level: parseInt(localStorage.getItem('ironwill_level') || '1'),
+      xp: parseInt(localStorage.getItem('ironwill_xp') || '0'),
+    })
   );
-  const [xp, setXp] = React.useState<number>(() =>
-    parseInt(localStorage.getItem('ironwill_xp') || '0')
-  );
+  // Set true right before a 'set' dispatch (login/import/onboarding) so the
+  // level-watching effect doesn't pop a level-up modal for non-gameplay changes.
+  const suppressLevelUpRef = React.useRef(false);
   const [streak, setStreak] = React.useState<number>(() =>
     parseInt(localStorage.getItem('ironwill_streak') || '0')
   );
@@ -230,40 +176,21 @@ export default function App() {
     const lastOpenDate = localStorage.getItem('ironwill_last_open_date');
 
     if (lastOpenDate && lastOpenDate !== today) {
-      // Đọc trực tiếp từ state (đã init từ localStorage)
-      const currentStreak  = streak;
-      const currentShields = shields;
-
       const daysDiff = Math.floor(
         (new Date(today).getTime() - new Date(lastOpenDate).getTime()) / 86400000
       );
+      const yesterdayLog = logs.find(l => l.date === lastOpenDate);
+      const score = yesterdayLog ? Object.values(yesterdayLog.routines).filter(Boolean).length : 0;
 
-      if (daysDiff === 1) {
-        const yesterdayLog = logs.find(l => l.date === lastOpenDate);
-        const score = yesterdayLog ? Object.values(yesterdayLog.routines).filter(Boolean).length : 0;
-
-        if (score >= 3) {
-          const newStreak = currentStreak + 1;
-          setStreak(newStreak);
-          // Shield milestone
-          if (newStreak % 7 === 0) {
-            setShields(Math.min(2, currentShields + 1));
-            setToastMsg(getStreakMilestoneMsg(newStreak));
-          }
-          // Achievement ach1
-          if (newStreak >= 7) {
-            setAchievements(prev => prev.map(a =>
-              a.id === 'ach1' && a.unlockedAt === null ? { ...a, unlockedAt: today } : a
-            ));
-          }
-        } else if (currentShields > 0) {
-          setShields(currentShields - 1); // shield bảo vệ streak
-        } else {
-          setStreak(0);
-        }
-      } else {
-        // Bỏ nhiều ngày → reset
-        setStreak(0);
+      // Pure rollover (streak/shields) — see utils/streak.ts. Side-effects applied here.
+      const result = computeStreakRollover(streak, shields, score, daysDiff);
+      setStreak(result.streak);
+      setShields(result.shields);
+      if (result.milestoneReached) setToastMsg(getStreakMilestoneMsg(result.streak));
+      if (result.streak >= 7) {
+        setAchievements(prev => prev.map(a =>
+          a.id === 'ach1' && a.unlockedAt === null ? { ...a, unlockedAt: today } : a
+        ));
       }
       setDailyRoutines({ eat: false, pray: false, train: false, study: false, work: false, sleep: false });
 
@@ -341,14 +268,15 @@ export default function App() {
     const blankRoutines = { eat: false, pray: false, train: false, study: false, work: false, sleep: false };
 
     setHunterName(s.hunterName ?? 'Challenger');
-    setLevel(s.level ?? 1);
-    setXp(s.xp ?? 0);
+    suppressLevelUpRef.current = true; // cloud level change is not gameplay — no modal
+    dispatchProgress({ type: 'set', level: s.level ?? 1, xp: s.xp ?? 0 });
     setStreak(s.streak ?? 0);
     setShields(s.shields ?? 0);
     setDisciplineMode(s.disciplineMode ?? true);
     setSoundEnabled(s.soundEnabled ?? true);
     setOnboardingDone(s.onboardingDone ?? true);
     setRoutineLabels(s.routineLabels ?? {});
+    setRoutineDescs(s.routineDescs ?? {});
     setWhyCards(s.whyCards ?? []);
     setMonthlyBudgets(s.monthlyBudgets ?? {});
     // Reset routines when cloud state is from a previous day — prevents stale ticks showing on new day
@@ -377,7 +305,7 @@ export default function App() {
         // First login — push current local data to Firestore
         const localState: GameState = {
           hunterName, level, xp, streak, shields, disciplineMode, soundEnabled,
-          onboardingDone, routineLabels, whyCards, monthlyBudgets, dailyRoutines,
+          onboardingDone, routineLabels, routineDescs, whyCards, monthlyBudgets, dailyRoutines,
           tasks, archivedTasks, transactions, weightLogs, logs, achievements,
           lastOpenDate: localStorage.getItem('ironwill_last_open_date') ?? getTodayDateString(),
         };
@@ -391,7 +319,7 @@ export default function App() {
     if (!currentUser) return;
     const state: GameState = {
       hunterName, level, xp, streak, shields, disciplineMode, soundEnabled,
-      onboardingDone, routineLabels, whyCards, monthlyBudgets, dailyRoutines,
+      onboardingDone, routineLabels, routineDescs, whyCards, monthlyBudgets, dailyRoutines,
       tasks, archivedTasks, transactions, weightLogs, logs, achievements,
       lastOpenDate: localStorage.getItem('ironwill_last_open_date') ?? getTodayDateString(),
     };
@@ -399,7 +327,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, [ // eslint-disable-line react-hooks/exhaustive-deps
     currentUser, hunterName, level, xp, streak, shields, disciplineMode, soundEnabled,
-    onboardingDone, routineLabels, whyCards, monthlyBudgets, dailyRoutines,
+    onboardingDone, routineLabels, routineDescs, whyCards, monthlyBudgets, dailyRoutines,
     tasks, archivedTasks, transactions, weightLogs, logs, achievements,
   ]);
 
@@ -436,23 +364,25 @@ export default function App() {
   const isChallengeAlreadyClaimed = logs.find(l => l.date === todayStr)?.dailyChallengeClaimed ?? false;
   const totalTasksCompleted = [...tasks, ...archivedTasks].filter(t => t.completed).length;
 
+  // Pure dispatch — multi-level rollover handled in the reducer. Stable identity.
   const addXP = React.useCallback((amount: number) => {
-    setXp(prevXp => {
-      let cur = prevXp + amount;
-      let lvl = level;
-      if (cur >= getXpNeeded(lvl)) {
-        cur -= getXpNeeded(lvl);
-        lvl += 1;
-        setLevel(lvl);
-        const prevRank = getRankForLevel(lvl - 1);
-        const newRank  = getRankForLevel(lvl);
-        setTimeout(() => {
-          if (soundEnabled) playLevelUpSound();
-          setLevelUpInfo({ level: lvl, rank: newRank, rankChanged: prevRank !== newRank, prevRank });
-        }, 100);
-      }
-      return cur;
-    });
+    dispatchProgress({ type: 'addXp', amount });
+  }, []);
+
+  // Level-up modal + sound react to `level` increasing from gameplay. Changes
+  // caused by login/import/onboarding are suppressed via suppressLevelUpRef so
+  // they don't pop a spurious modal. Showing the FINAL level covers multi-level
+  // jumps with a single modal.
+  const prevLevelRef = React.useRef(level);
+  React.useEffect(() => {
+    const prevLevel = prevLevelRef.current;
+    prevLevelRef.current = level;
+    if (suppressLevelUpRef.current) { suppressLevelUpRef.current = false; return; }
+    if (level <= prevLevel) return;
+    const prevRank = getRankForLevel(prevLevel);
+    const newRank  = getRankForLevel(level);
+    if (soundEnabled) playLevelUpSound();
+    setLevelUpInfo({ level, rank: newRank, rankChanged: prevRank !== newRank, prevRank });
   }, [level, soundEnabled]);
 
   // ── ACHIEVEMENTS ───────────────────────────────────────────────────────────
@@ -629,12 +559,12 @@ export default function App() {
   };
 
   const setCurrentMonthBudget = (amount: number) => {
-    const ym = getTodayDateString().slice(0, 7);
+    const ym = getCurrentYearMonth();
     setMonthlyBudgets(prev => ({ ...prev, [ym]: amount }));
   };
 
   const handleMonthlyReviewConfirm = (newBudget: number) => {
-    const ym = getTodayDateString().slice(0, 7);
+    const ym = getCurrentYearMonth();
     setMonthlyBudgets(prev => ({ ...prev, [ym]: newBudget }));
     setMonthlyReview(null);
   };
@@ -689,7 +619,7 @@ export default function App() {
   const handleExport = () => {
     exportBackup({
       hunterName, level, xp, streak, shields, disciplineMode, soundEnabled,
-      onboardingDone, whyCards, monthlyBudgets, routineLabels, dailyRoutines,
+      onboardingDone, whyCards, monthlyBudgets, routineLabels, routineDescs, dailyRoutines,
       tasks, archivedTasks, transactions, weightLogs, logs, achievements,
       lastOpenDate: localStorage.getItem('ironwill_last_open_date') ?? getTodayDateString(),
     });
@@ -704,14 +634,15 @@ export default function App() {
     const s = pendingImport;
     // Apply all state
     setHunterName(s.hunterName ?? 'Challenger');
-    setLevel(s.level ?? 1);
-    setXp(s.xp ?? 0);
+    suppressLevelUpRef.current = true; // imported level change is not gameplay — no modal
+    dispatchProgress({ type: 'set', level: s.level ?? 1, xp: s.xp ?? 0 });
     setStreak(s.streak ?? 0);
     setShields(s.shields ?? 0);
     setDisciplineMode(s.disciplineMode ?? true);
     setSoundEnabled(s.soundEnabled ?? true);
     setOnboardingDone(s.onboardingDone ?? true);
     setRoutineLabels(s.routineLabels ?? {});
+    setRoutineDescs(s.routineDescs ?? {});
     setWhyCards(s.whyCards ?? []);
     setMonthlyBudgets(s.monthlyBudgets ?? {});
     setDailyRoutines(s.dailyRoutines ?? {});
@@ -744,7 +675,7 @@ export default function App() {
     setHunterName(name);
     if (firstTask) addTask(firstTask, 'BOSS');
     setWhyCards([whyCard]);
-    setXp(30); // Endowed progress — phần thưởng khởi hành
+    dispatchProgress({ type: 'set', level: 1, xp: 30 }); // Endowed progress — phần thưởng khởi hành
     localStorage.setItem('ironwill_onboarding_done', 'true');
     setOnboardingDone(true);
   };
@@ -898,7 +829,7 @@ export default function App() {
             <TreasuryBoard
               transactions={transactions} addTransaction={addTransaction}
               deleteTransaction={deleteTransaction} soundEnabled={soundEnabled}
-              currentMonthBudget={monthlyBudgets[getTodayDateString().slice(0, 7)] || 0}
+              currentMonthBudget={monthlyBudgets[getCurrentYearMonth()] || 0}
               setCurrentMonthBudget={setCurrentMonthBudget}
             />
           )}

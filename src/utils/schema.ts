@@ -1,4 +1,5 @@
 import { Task, DayLog, Transaction, Achievement, WhyCard } from '../types';
+import { getTodayDateString } from './date';
 
 // Bump this when the shape of BackupData changes.
 // Migration table below must handle every version from 0 → SCHEMA_VERSION.
@@ -18,6 +19,7 @@ export interface BackupData {
   whyCards: WhyCard[];
   monthlyBudgets: Record<string, number>;
   routineLabels: Record<string, string>;
+  routineDescs?: Record<string, string>; // custom routine descriptions — optional for backward compat
   dailyRoutines: Record<string, boolean>;
   tasks: Task[];
   archivedTasks?: Task[]; // tasks auto-dọn từ ngày cũ — giữ để đếm achievement + lịch sử
@@ -87,7 +89,7 @@ export function validateBackup(raw: unknown): BackupData {
 // ── Export ───────────────────────────────────────────────────────────────────
 
 export function exportBackup(state: Omit<BackupData, 'schemaVersion' | 'exportedAt'>): void {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayDateString();
   const payload: BackupData = { schemaVersion: SCHEMA_VERSION, exportedAt: today, ...state };
 
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
