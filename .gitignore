@@ -11,3 +11,6 @@ dist-ssr
 # Claude Code local config & repo bundle backups
 .claude/
 *.bundle
+
+# Firebase CLI cache
+.firebase/
