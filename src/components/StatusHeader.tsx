@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Flame, Sparkles, Zap, Volume2, VolumeX, ShieldCheck, User, LogIn, LogOut } from 'lucide-react';
+import { Shield, Flame, Sparkles, Zap, Volume2, VolumeX, ShieldCheck, User, LogIn, LogOut, ChevronDown } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import AvatarCropModal from './AvatarCropModal';
 import ProfileModal from './ProfileModal';
@@ -48,6 +48,10 @@ export default function StatusHeader({
   const [tempName, setTempName] = React.useState(hunterName);
   const [cropSrc, setCropSrc] = React.useState<string | null>(null);
   const [showProfile, setShowProfile] = React.useState(false);
+  // Mobile-only collapse: card shows just avatar/name/level/EXP until expanded.
+  // Desktop (md+) always shows everything regardless. (feat-mobile-density)
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const detailCls = detailsOpen ? 'flex' : 'hidden'; // toggles the md:hidden detail blocks
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,7 +142,7 @@ export default function StatusHeader({
           </div>
 
           {/* Rank badge */}
-          <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full border flex flex-col items-center justify-center p-1 bg-black font-mono font-bold text-lg select-none flex-shrink-0 ${getRankColor(rank)}`}>
+          <div className={`${detailCls} md:flex w-14 h-14 sm:w-16 sm:h-16 rounded-full border flex-col items-center justify-center p-1 bg-black font-mono font-bold text-lg select-none flex-shrink-0 ${getRankColor(rank)}`}>
             <span className="text-[9px] uppercase text-zinc-500 tracking-wider">Rank</span>
             <span className="leading-tight italic text-xl font-black">{rank.split('-')[0]}</span>
           </div>
@@ -172,14 +176,14 @@ export default function StatusHeader({
                 LVL {level}
               </span>
             </div>
-            <p className="text-xs text-zinc-400 mt-1.5 font-mono uppercase tracking-widest flex items-center gap-1.5 min-w-0">
+            <p className={`${detailCls} md:flex text-xs text-zinc-400 mt-1.5 font-mono uppercase tracking-widest items-center gap-1.5 min-w-0`}>
               <Zap className="w-3.5 h-3.5 text-orange-500 animate-pulse flex-shrink-0" /> <span className="break-words">Ascendant Sovereignty</span>
             </p>
           </div>
         </div>
 
         {/* Mindset + sound controls */}
-        <div className="flex flex-wrap items-center gap-3 bg-black/40 p-3 rounded-lg border border-white/5 text-xs font-mono">
+        <div className={`${detailCls} md:flex flex-wrap items-center gap-3 bg-black/40 p-3 rounded-lg border border-white/5 text-xs font-mono`}>
           <div className="flex flex-col gap-1 pr-3 border-r-0 sm:border-r border-white/5">
             <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500">MINDSET TUNING</span>
             <span className="text-xs font-bold text-zinc-200 flex items-center gap-1">
@@ -264,7 +268,7 @@ export default function StatusHeader({
         </div>
 
         {/* Counters */}
-        <div className="md:col-span-5 grid grid-cols-3 gap-3 text-center">
+        <div className={`${detailsOpen ? 'grid' : 'hidden'} md:grid md:col-span-5 grid-cols-3 gap-3 text-center`}>
           {/* Streak */}
           <div className="bg-black/40 border border-white/5 rounded-lg p-2.5 flex items-center justify-between px-3">
             <div className="text-left">
@@ -297,6 +301,15 @@ export default function StatusHeader({
           </div>
         </div>
       </div>
+
+      {/* Mobile-only expand/collapse toggle */}
+      <button
+        onClick={() => setDetailsOpen(v => !v)}
+        className="md:hidden mt-4 w-full flex items-center justify-center gap-1 text-[11px] font-mono text-zinc-500 hover:text-orange-400 transition-colors"
+      >
+        {detailsOpen ? 'Thu gọn' : 'Chi tiết'}
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} />
+      </button>
     </div>
   );
 }

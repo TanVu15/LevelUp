@@ -448,6 +448,11 @@ export default function QuestBoard({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Secondary tools (Focus Timer + WHY) — order-last so on mobile they appear
+          AFTER the task list; on desktop they sit in the left column's 2nd row. */}
+      <div className="lg:col-span-5 space-y-8 order-last">
 
         {/* Focus Timer */}
         <div className="bg-zinc-900/45 border border-white/10 rounded-xl p-6 relative overflow-hidden text-center">

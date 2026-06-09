@@ -67,7 +67,7 @@ export function AppBackdrop({ themeStyle }: { themeStyle: ThemeStyle }) {
 /** Top header: logo + project title + operator/level + server-state pill. */
 export function AppHeader({ themeStyle, hunterName, level }: { themeStyle: ThemeStyle; hunterName: string; level: number }) {
   return (
-    <header className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-white/10">
+    <header className="hidden md:flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-white/10">
       <div className="flex items-center gap-4 select-none">
         <div className={`w-12 h-12 rounded-sm flex items-center justify-center font-bold text-black text-xl italic ${
           themeStyle === 'discipline' ? 'bg-orange-600' : 'bg-amber-500'
