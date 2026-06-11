@@ -53,3 +53,8 @@ export const DAILY_TASK_XP_CAP = 150;
 
 // Per-tier daily completion caps — prevents single-tier quantity abuse (ADR-009).
 export const DAILY_TIER_CAPS: Record<TaskTier, number> = { BOSS: 2, DUNGEON: 4, MANA: 5 };
+
+// Focus timer (CHRONO ARENA): XP mỗi phiên hoàn thành + cap phiên-có-XP mỗi ngày.
+// 4 × 25 = 100 XP/ngày — ngang 1 BOSS; quá cap timer vẫn chạy, chỉ không cộng XP (ADR-009).
+export const FOCUS_XP = 25;
+export const DAILY_FOCUS_CAP = 4;

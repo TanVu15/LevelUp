@@ -8,7 +8,7 @@ import { playClickSound, playQuestSuccessSound, playTimerEndSound } from '../uti
 import { Quote, QUOTES } from '../data/quotes';
 import TaskHistoryModal from './TaskHistoryModal';
 import { getTodayDateString, addDays } from '../utils/date';
-import { DAILY_TIER_CAPS } from '../utils/xp';
+import { DAILY_TIER_CAPS, DAILY_FOCUS_CAP, FOCUS_XP } from '../utils/xp';
 import { ROUTINE_ICONS, ROUTINE_ICON_KEYS, getRoutineIcon, MAX_ROUTINES } from '../data/routines';
 
 interface QuestBoardProps {
@@ -21,7 +21,8 @@ interface QuestBoardProps {
   toggleRoutine: (routineId: string) => void;
   disciplineMode: boolean;
   soundEnabled: boolean;
-  addXP: (amount: number) => void;
+  onFocusComplete: () => boolean; // award XP nếu chưa chạm cap ngày — return có XP không
+  focusSessionsToday: number;     // số phiên đã nhận XP hôm nay (hiển thị X/DAILY_FOCUS_CAP)
   whyCards: WhyCard[];
   setWhyCards: (cards: WhyCard[]) => void;
   routines: RoutineDef[];
@@ -45,7 +46,7 @@ const WHY_TYPE_CONFIG: Record<WhyCardType, { emoji: string; label: string; textC
 export default function QuestBoard({
   tasks, archivedTasks, addTask, toggleTask, deleteTask,
   dailyRoutines, toggleRoutine,
-  disciplineMode, soundEnabled, addXP,
+  disciplineMode, soundEnabled, onFocusComplete, focusSessionsToday,
   whyCards, setWhyCards,
   routines, addRoutine, updateRoutine, deleteRoutine, restoreDefaultRoutines,
   taskTierCountsToday,
@@ -53,6 +54,19 @@ export default function QuestBoard({
 }: QuestBoardProps) {
   const [newTaskTitle, setNewTaskTitle] = React.useState('');
   const [newTaskTier, setNewTaskTier] = React.useState<TaskTier>('DUNGEON');
+  // Xóa task 2 chạm — chạm 1 arm ("Xóa?"), 3s tự hủy; chạm 2 xóa thật (REQ-06 device-feedback).
+  const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
+  const confirmDeleteTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleDeleteTap = (id: string) => {
+    if (confirmDeleteTimer.current) clearTimeout(confirmDeleteTimer.current);
+    if (confirmDeleteId === id) {
+      setConfirmDeleteId(null);
+      deleteTask(id);
+      return;
+    }
+    setConfirmDeleteId(id);
+    confirmDeleteTimer.current = setTimeout(() => setConfirmDeleteId(null), 3000);
+  };
   const [newDueDate, setNewDueDate] = React.useState(() => getTodayDateString());
   const [editingLabelId, setEditingLabelId] = React.useState<string | null>(null);
   const [tempLabel, setTempLabel] = React.useState('');
@@ -65,12 +79,13 @@ export default function QuestBoard({
     type: 'PAIN', title: '', story: ''
   });
 
-  // Focus Timer
-  const [timerMinutes, setTimerMinutes] = React.useState(25);
-  const [timerSeconds, setTimerSeconds] = React.useState(0);
-  const [isTimerRunning, setIsTimerRunning] = React.useState(false);
+  // Focus Timer — đếm theo đồng hồ thật (feat-focus-timer-hardening REQ-01).
+  // endsAt = epoch ms khi hết giờ (null = không chạy); remainingSec chỉ là số hiển thị,
+  // mỗi tick TÍNH LẠI từ Date.now() — background suspend xong quay lại vẫn đúng giờ.
   const [activePreset, setActivePreset] = React.useState<number>(25);
-  const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const [endsAt, setEndsAt] = React.useState<number | null>(null);
+  const [remainingSec, setRemainingSec] = React.useState(25 * 60);
+  const isTimerRunning = endsAt !== null;
 
   const [currentQuote, setCurrentQuote] = React.useState<Quote>(QUOTES[0]);
 
@@ -84,34 +99,38 @@ export default function QuestBoard({
   React.useEffect(() => { rotateQuote(); }, [disciplineMode, rotateQuote]);
 
   React.useEffect(() => {
-    if (isTimerRunning) {
-      timerRef.current = setInterval(() => {
-        if (timerSeconds > 0) {
-          setTimerSeconds(prev => prev - 1);
-        } else if (timerMinutes > 0) {
-          setTimerMinutes(prev => prev - 1);
-          setTimerSeconds(59);
-        } else {
-          if (soundEnabled) playTimerEndSound();
-          setIsTimerRunning(false);
-          if (timerRef.current) clearInterval(timerRef.current);
-          addXP(25);
-          setTimerMinutes(activePreset);
-          setTimerSeconds(0);
-        }
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [isTimerRunning, timerMinutes, timerSeconds, activePreset, soundEnabled, addXP]);
+    if (endsAt === null) return;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      setRemainingSec(remaining);
+      if (remaining <= 0) {
+        setEndsAt(null); // trước side-effect — chặn complete 2 lần
+        if (soundEnabled) playTimerEndSound();
+        onFocusComplete();
+        setRemainingSec(activePreset * 60);
+      }
+    };
+    tick(); // cập nhật ngay (kể cả khi quay lại từ background đã quá giờ)
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endsAt, activePreset, soundEnabled]);
 
-  const handleStartTimer = () => { if (soundEnabled) playClickSound(); setIsTimerRunning(true); rotateQuote(); };
-  const handleStopTimer  = () => { if (soundEnabled) playClickSound(); setIsTimerRunning(false); };
+  const handleStartTimer = () => {
+    if (soundEnabled) playClickSound();
+    setEndsAt(Date.now() + remainingSec * 1000);
+    rotateQuote();
+  };
+  const handleStopTimer = () => {
+    if (soundEnabled) playClickSound();
+    if (endsAt !== null) setRemainingSec(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
+    setEndsAt(null);
+  };
   const handleResetTimer = (minutes: number) => {
     if (soundEnabled) playClickSound();
-    setIsTimerRunning(false); setActivePreset(minutes);
-    setTimerMinutes(minutes); setTimerSeconds(0);
+    setEndsAt(null);
+    setActivePreset(minutes);
+    setRemainingSec(minutes * 60);
   };
 
   const completedRoutinesCount = routines.filter(r => dailyRoutines[r.id]).length;
@@ -332,6 +351,7 @@ export default function QuestBoard({
                           <button
                             onClick={() => { deleteRoutine(routine.id); setEditingLabelId(null); }}
                             disabled={routines.length <= 1}
+                            aria-label="Xóa thói quen này"
                             title={routines.length <= 1 ? 'Phải giữ ít nhất 1 thói quen' : 'Xóa thói quen này'}
                             className="ml-auto p-1.5 rounded border border-white/10 text-zinc-500 hover:text-red-400 hover:border-red-500/40 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                           >
@@ -361,6 +381,7 @@ export default function QuestBoard({
                         <button
                           onClick={() => startLabelEdit(routine.id, label, desc)}
                           className="p-1 text-zinc-600 hover:text-orange-400 transition-colors"
+                          aria-label="Chỉnh sửa thói quen"
                           title="Chỉnh sửa tên, mô tả, icon"
                         >
                           <Pencil className="w-3 h-3" />
@@ -462,10 +483,15 @@ export default function QuestBoard({
 
           <div className="py-8">
             <div className="text-6xl font-black font-mono tracking-tight text-white mb-2 italic">
-              {String(timerMinutes).padStart(2, '0')}:{String(timerSeconds).padStart(2, '0')}
+              {String(Math.floor(remainingSec / 60)).padStart(2, '0')}:{String(remainingSec % 60).padStart(2, '0')}
             </div>
             <p className="text-[10px] font-mono uppercase tracking-widest text-zinc-500">
               {isTimerRunning ? "Deep execution phase... No distractions" : "CHOOSE YOUR RAID INTENSITY"}
+            </p>
+            <p className="text-[10px] font-mono text-zinc-600 mt-2">
+              {focusSessionsToday >= DAILY_FOCUS_CAP
+                ? 'Đã đạt giới hạn XP hôm nay — phiên vẫn được tính giờ.'
+                : `Phiên +${FOCUS_XP} XP hôm nay: ${focusSessionsToday}/${DAILY_FOCUS_CAP}`}
             </p>
           </div>
 
@@ -636,6 +662,7 @@ export default function QuestBoard({
                           type="button"
                           onClick={() => openWhyEdit(i)}
                           className="opacity-0 group-hover:opacity-100 p-1 text-zinc-600 hover:text-orange-400 transition-all flex-shrink-0"
+                          aria-label="Chỉnh sửa WHY card"
                           title="Chỉnh sửa"
                         >
                           <Pencil className="w-3 h-3" />
@@ -839,10 +866,15 @@ export default function QuestBoard({
                       </div>
                     </div>
                     <button
-                      onClick={() => deleteTask(task.id)}
-                      className="p-1.5 rounded hover:bg-zinc-900 text-zinc-600 hover:text-red-400 transition-colors"
+                      onClick={() => handleDeleteTap(task.id)}
+                      aria-label={confirmDeleteId === task.id ? `Chạm lần nữa để xóa ${task.title}` : `Xóa nhiệm vụ ${task.title}`}
+                      className={`p-1.5 rounded transition-colors ${
+                        confirmDeleteId === task.id
+                          ? 'bg-red-950/40 border border-red-700/50 text-red-400 text-[10px] font-mono font-bold px-2'
+                          : 'hover:bg-zinc-900 text-zinc-600 hover:text-red-400'
+                      }`}
                     >
-                      <Trash2 className="w-4 h-4" />
+                      {confirmDeleteId === task.id ? 'Xóa?' : <Trash2 className="w-4 h-4" />}
                     </button>
                   </div>
                 ))}
@@ -881,7 +913,7 @@ export default function QuestBoard({
                 <RotateCcw className="w-4 h-4 text-orange-400" />
               </div>
               <p className="text-xs font-black text-white font-mono uppercase italic">Khôi phục mẫu gốc</p>
-              <button onClick={() => setShowRestoreConfirm(false)} className="ml-auto text-zinc-600 hover:text-white transition-colors">
+              <button onClick={() => setShowRestoreConfirm(false)} aria-label="Đóng" className="ml-auto text-zinc-600 hover:text-white transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>

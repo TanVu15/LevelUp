@@ -1,10 +1,26 @@
 // Web Audio API Synthesizer for high-tech gamified feedback
 let audioCtx: AudioContext | null = null;
 
+// iOS suspend AudioContext khi app vào nền → node đang phát bị treo, lúc context
+// thức dậy (mở lại app / warmupAudio) chúng burst ra thành tiếng "xoẹt" ma.
+// Fix (feat-device-feedback-fixes REQ-01): app ẩn → CLOSE context (node chết hẳn),
+// lần play kế tiếp tạo context mới — luôn từ user gesture nên không vướng autoplay.
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && audioCtx) {
+      audioCtx.close().catch(() => {});
+      audioCtx = null;
+      if (!zapBuffer) zapLoading = null; // promise decode gắn ctx cũ — cho phép thử lại
+    }
+  });
+}
+
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
+  if (document.hidden) return null; // không schedule âm thanh khi app đang ẩn
   if (!audioCtx) {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioContextClass = window.AudioContext
+      || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (AudioContextClass) {
       audioCtx = new AudioContextClass();
     }
@@ -38,6 +54,12 @@ function preloadZap(): Promise<AudioBuffer | null> {
 export function warmupAudio(): void {
   getAudioContext();
   preloadZap();
+}
+
+// BootIntro chờ promise này (có timeout phía gọi) rồi mới bắt đầu CẢ hình lẫn tiếng
+// cùng một khung hình — hết cảnh tiếng zap vào trễ so với màn hình nhiễu (iOS decode chậm).
+export function zapReady(): Promise<boolean> {
+  return preloadZap().then(b => !!b).catch(() => false);
 }
 
 export function playClickSound() {
@@ -156,10 +178,18 @@ export function playElectricZap(): void {
       });
     } catch { /* unsupported */ }
   };
-  // If the context is still warming up, wait for it so playback starts on the
-  // live clock instead of being delayed/clumped.
-  if (ctx.state === 'suspended') ctx.resume().then(run).catch(() => {});
-  else run();
+  // Context suspended (mount sau reload — CHƯA có user gesture, iOS không cho resume):
+  // thử resume trong cửa sổ ngắn; quá hạn thì BỎ HẲN tiếng zap. Tuyệt đối không để
+  // lệnh phát nằm chờ — nó sẽ bắn ra cùng tiếng tick ở cú chạm kế tiếp (device test round 3).
+  if (ctx.state === 'suspended') {
+    let expired = false;
+    const tryRun = () => { if (!expired && ctx.state === 'running') { expired = true; run(); } };
+    ctx.resume().then(tryRun).catch(() => {});
+    setTimeout(tryRun, 150);                    // resume kịp trong gesture còn hiệu lực
+    setTimeout(() => { expired = true; }, 600); // quá hạn → vứt, intro chạy không tiếng
+  } else {
+    run();
+  }
 }
 
 export function playTimerEndSound() {

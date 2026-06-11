@@ -1,5 +1,5 @@
 # CLAUDE.md — Project Memory
-# Version: 3.0.0 | Updated: 2026-06-04
+# Version: 3.1.0 | Updated: 2026-06-11
 
 ## TL;DR (30 giây đọc)
 **LevelUp** — app productivity + finance cá nhân được game hóa theo phong cách RPG.
@@ -31,12 +31,15 @@ src/
 │   ├── CelebrationToast.tsx   # Toast streak milestone (7/14/21/28 ngày)
 │   └── AppChrome.tsx          # Presentational: AppBackdrop/AppHeader/AppFooter (bóc khỏi App.tsx)
 │   # (+ AuthModal, ProfileModal, AvatarCropModal, BootIntro, ImportConfirmModal,
-│   #    TaskHistoryModal, TimelineEntry, PWAInstallPrompt)
+│   #    TaskHistoryModal, TimelineEntry, PWAInstallPrompt,
+│   #    SyncConflictModal (ADR-015), DeleteAccountModal (ADR-016),
+│   #    WeeklyReviewModal (feat-weekly-review))
 ├── hooks/
 │   ├── usePersistedState.ts   # useState ↔ localStorage + codecs (str/int/bool/json)
 │   └── useFirebaseSync.ts     # Auth + Firestore sync (ADR-011), gói gọn khỏi App.tsx
 ├── data/
 │   ├── quotes.ts              # 44 quotes (30 discipline + 14 motivation)
+│   ├── categories.ts          # Nhãn VI cho ExpenseCategory (giá trị lưu giữ EN — feat-ui-language-a11y)
 │   └── routines.ts            # RoutineDef template + ROUTINE_ICONS registry (ADR-014)
 └── utils/
     ├── audio.ts               # Web Audio API: click, success, levelup, timer
@@ -45,9 +48,16 @@ src/
     ├── streak.ts              # Pure: computeStreakRollover, getStreakMilestoneMsg (ADR-006)
     ├── challenge.ts           # Pure: daily challenge pick + condition check
     ├── schema.ts              # Export/Import + schema versioning + migrate (ADR-012)
-    ├── firestoreSync.ts       # GameState load/save (ADR-011)
-    ├── imageDB.ts             # IndexedDB cho avatar + body photos
-    └── __tests__/            # Vitest: date, xp, streak, challenge (33 tests)
+    ├── firestoreSync.ts       # GameState load/save + updatedAt stamp (ADR-011/015)
+    ├── syncMeta.ts            # Pure: decideCloudAction + local updatedAt (ADR-015)
+    ├── weekly.ts              # Pure: getWeekStart + computeWeeklyReview (feat-weekly-review)
+    ├── imageDB.ts             # IndexedDB cho avatar + body photos (+clearAllImages)
+    └── __tests__/            # Vitest: date, xp, streak, challenge, syncMeta, weekly (46 tests)
+e2e/
+└── core-flows.e2e.ts          # Playwright E2E: guest onboarding, rollover, import (npm run test:e2e, cần build trước)
+public/privacy.html            # Chính sách quyền riêng tư (trang tĩnh — KHÔNG routing)
+scripts/generate-icons.mjs     # Sinh PNG icons + favicon.ico từ icon-512.svg (chạy tay khi icon đổi)
+scripts/audit-preview.mjs      # Audit bản build: console errors, manifest, SW (chạy với vite preview)
 ```
 
 **Pure logic ở `utils/` (date/xp/streak/challenge) — không React/state/localStorage → unit-test được.**
@@ -93,6 +103,8 @@ interface DayLog {
   overdriveXpClaimed?: boolean;              // OVERDRIVE bonus already given today
   taskXpEarned?: number;                     // cumulative task XP earned today (NEVER resets — cap enforcement, survives task deletion)
   taskCountByTier?: Partial<Record<TaskTier, number>>; // XP-earning completions per tier today (BOSS≤2, DUNGEON≤4, MANA≤5)
+  dailyChallengeClaimed?: boolean;           // challenge XP đã nhận hôm nay
+  focusSessionsClaimed?: number;             // phiên focus đã nhận XP hôm nay (cap 4 — feat-focus-timer-hardening)
   note: string;                              // daily reflection text
   weight?: number;
 }
@@ -203,7 +215,22 @@ interface Achievement {
 **Sync:** `routines?` trong GameState + BackupData + mọi điểm sync/export/import.
 **Không chọn:** giữ 2 map labels/descs làm nguồn (2 source of truth) · cho vô hạn routine (lạm phát XP) · lưu icon component trong state.
 
+### ADR-015: Sync Hardening (conflict detection + flush)
+**Quyết định:** `GameState.updatedAt` (epoch ms, stamp lúc `saveGameState`) + localStorage `ironwill_updated_at` (touch khi gameState memo đổi, skip mount). Khi login có cloud doc: `decideCloudAction` (pure, `utils/syncMeta.ts`) — local mới hơn → `SyncConflictModal` bắt user chọn Cloud/Máy này (không có nút đóng); ngược lại apply cloud như cũ. Flush save khi `visibilitychange(hidden)`/`pagehide` nếu dirty (đóng app trong cửa sổ debounce 3s không còn mất thay đổi). `navigator.storage.persist()` trong main.tsx chống evict.
+**Lý do:** Last-write-wins mù gây mất dữ liệu thật (login máy B / guest có dữ liệu rồi login).
+**Lưu ý:** `updatedAt` CHỦ ĐÍCH không nằm trong BackupData (metadata sync, không phải dữ liệu game).
+**Không chọn:** auto-merge field-level (over-engineered cho single-doc).
+
+### ADR-016: Account Lifecycle + Privacy (chuẩn pre-public)
+**Quyết định:** "Quên mật khẩu?" trong AuthModal (`sendPasswordResetEmail`, thông báo trung tính chống dò email). Xóa tài khoản: `DeleteAccountModal` (gõ XOA) → deleteDoc → user.delete() → clear local (KHÔNG xóa local nếu cloud chưa xóa xong; `auth/requires-recent-login` → bảo re-login). `public/privacy.html` tĩnh, link từ AuthModal + Timeline. Timeline nhánh logged-in có Export/Import (ảnh chỉ trong file backup).
+**Lý do:** Google Play/App Store bắt buộc account deletion; GDPR; user quên pass từng = mất tài khoản vĩnh viễn.
+
 ## PATTERNS & CONVENTIONS
+
+**Quy ước ngôn ngữ (feat-ui-language-a11y):** heading/flavor RPG = tiếng Anh
+(STRENGTH PROGRESSION, CHRONO ARENA…); nội dung user cần hiểu để dùng app = tiếng Việt
+(category, mô tả, nút, thông báo). Category labels lấy từ `data/categories.ts`
+(`getCategoryLabel`) — giá trị LƯU giữ tiếng Anh, KHÔNG đổi. Icon-only button phải có `aria-label`.
 
 ```tsx
 // Pattern: State lifted lên App.tsx, component nhận props + callback
@@ -262,6 +289,22 @@ if (lastOpenYM !== currentYM) { /* trigger MonthlyReviewModal */ }
 - **Đừng quên field mới ở MỌI điểm sync** — thêm field vào state thì phải thêm vào `GameState` (firestoreSync), `BackupData` (schema), `applyGameState`, first-login push, debounced sync, `handleExport`, `handleImportConfirm` (bài học `routineDescs`)
 
 ## KNOWN ISSUES & WORKAROUNDS
+- **Firestore rules + DELETE:** `request.resource` là NULL khi delete — KHÔNG gộp điều kiện
+  `request.resource.data.size()` vào `allow write` chung (sẽ từ chối xóa tài khoản).
+  Tách `allow create, update` riêng / `allow delete` riêng (bug tìm ra qua device test).
+- **iOS audio ghost:** AudioContext bị suspend khi app vào nền → node treo burst thành tiếng
+  "xoẹt" khi resume. Fix: visibilitychange(hidden) → close() context + tạo lại lazy (audio.ts).
+  Đừng quay lại pattern giữ context sống qua background.
+- **iOS PWA standalone + Google sign-in: KHÔNG LÀM ĐƯỢC (đã thử cả 2 đường).**
+  Popup không quay về app; redirect thì Google sập "Đã xảy ra lỗi" (Apple cô lập storage
+  tấm trình duyệt nhúng → Google mất phiên). Giải pháp chốt: iOS standalone ẨN nút Google
+  + note dùng Email/Mật khẩu (AuthModal `isIosStandalone`); nền tảng khác dùng popup.
+  authDomain giữ same-origin (levelup-4ba63.web.app) — OAuth client đã đăng ký cả
+  origin + redirect URI của web.app. ĐỪNG thử lại signInWithRedirect cho iOS standalone.
+- **SW navigateFallback nuốt /__/auth/handler:** workbox mặc định trả app shell cho MỌI
+  navigation → redirect sign-in về app như khách (không popup, không lỗi). PHẢI giữ
+  `navigateFallbackDenylist: [/^\/__\//, /^\/privacy\.html/]` trong vite.config. Trang
+  tĩnh mới thêm vào public/ cũng phải vào denylist.
 - **Tailwind v4 class purging:** dùng full class string thay vì template literal (`bg-orange-500` không phải `` `bg-${color}-500` ``)
 - **Web Audio context:** cần user gesture trước khi play — đã có try/catch, không crash
 - **Nested setState trong mount effect:** `setStreak` / `setShields` được gọi trực tiếp (không nested functional update) — OK trong React 18 batching. Logic streak giờ tính qua `computeStreakRollover` (pure, có test).
@@ -272,6 +315,8 @@ if (lastOpenYM !== currentYM) { /* trigger MonthlyReviewModal */ }
 - **Playwright screenshot:** luôn dùng fresh context (no localStorage) → thấy onboarding. Đây là hành vi đúng cho user mới
 - **IndexedDB photos:** `avatarUrl` và `bodyPhotos` lưu locally (IndexedDB). **Export/Import JSON ĐÃ bao gồm ảnh** (feat-backup-photos) → backup thủ công bảo toàn ảnh. **Cloud sync (Firestore) vẫn CHƯA** (giới hạn 1MB/doc → cần Firebase Storage, Phase 2).
 - **applyGameState không chạy streak logic:** Khi login Firebase, streak/shields từ cloud được apply trực tiếp (không tính lại). Streak chỉ được update bởi mount effect dựa trên localStorage. Cross-device: mount effect đọc `lastOpenDate=null` → skip streak update. Acceptable for MVP.
+- **Cloud sync last-write-wins:** ĐÃ FIX (feat-sync-hardening, ADR-015). Conflict modal khi local mới hơn cloud; flush khi rời trang. Cloud doc legacy chưa có `updatedAt` → conflict modal hiện 1 lần nếu local từng thay đổi (an toàn hơn ghi đè im lặng).
+- **Fonts self-host (feat-pwa-public-ready):** KHÔNG thêm lại Google Fonts CDN. Subset vietnamese của JetBrains Mono chỉ có `.woff` → globPatterns SW phải giữ cả `woff` (kèm globIgnores lọc bản trùng). Icon đổi → chạy lại `node scripts/generate-icons.mjs`.
 - **Archive idempotency (StrictMode):** ĐÃ FIX. Auto-archive (ADR-013) dùng functional update + dedupe theo id → an toàn khi mount effect chạy 2 lần (React 19 StrictMode). Đừng quay lại pattern `setArchivedTasks(prev => [...toArchive, ...prev])` không dedupe.
 - **Migration effect ordering:** ĐÃ FIX. Migration effect dùng `setTasks(prev => migrate({tasks: prev}).tasks)` (functional update trên state) thay vì đọc lại `localStorage` gốc — nếu không sẽ ghi đè kết quả auto-archive của date-reset effect (chạy trước) và resurrect task đã dọn lên board.
 - **Import mồ côi:** ĐÃ FIX (feat-export-import SPEC). UI Import từng ở `JourneyLogs.tsx` nhưng tab JOURNEY đã chuyển sang `Timeline.tsx`. Đã port nút Import + file input + `validateBackup` sang Timeline, wire `onImportRequest={handleImportRequest}`. **`JourneyLogs.tsx` đã được XOÁ** (dead code, Timeline thay thế hoàn toàn).
@@ -291,7 +336,27 @@ Hardening bổ sung (feat-xp-progression-hardening):
 - [x] `applyXpGain` multi-level (fix `if`→`while`), progression qua `useReducer`, level-up modal chuyển ra effect (hết side-effect trong updater)
 - [x] `routineDescs` sync Firestore + Export/Import (hết data-loss âm thầm)
 
+Pre-public sprint (2026-06-11) — feat-sync-hardening, feat-pwa-public-ready, feat-account-lifecycle, feat-e2e-tests:
+- [x] GĐ1: updatedAt + SyncConflictModal + flush pagehide + storage.persist (ADR-015)
+- [x] GĐ2: PNG icons/favicon (scripts/generate-icons.mjs), self-host fonts @fontsource, manifest lang=vi, OG meta
+- [x] GĐ3: quên mật khẩu, xóa tài khoản (ADR-016), privacy.html, Export/Import cho user đã login
+- [x] GĐ4: 3 E2E Playwright (`npm run test:e2e` — guest/rollover/import), `e2e/*.e2e.ts` để vitest không nuốt
+
+Việc còn lại TRƯỚC KHI PUBLIC (cần tay người — không tự code được):
+- [ ] Firebase App Check (console: reCAPTCHA v3) — chống spam Firestore bằng API key public
+- [ ] Crash reporting (Sentry DSN) + billing alert Firebase
+- [ ] Test trên iPhone Safari thật (PWA install, icon, audio, safe-area) + Android Chrome
+- [ ] Beta 5–10 user / 2 tuần (đủ 1 chu kỳ streak 14 ngày), tiêu chí: 0 mất dữ liệu, crash-free ≥99.5%
+- [ ] Email template Firebase (reset password) đổi sang tiếng Việt (console → Authentication → Templates)
+
+UI/UX sprint (2026-06-11, sau audit screenshot 3 tab × mobile/desktop):
+- [x] feat-focus-timer-hardening — timer đếm theo Date.now() (hết đứng hình khi mobile background), cap 4 phiên ×25 XP/ngày qua `DayLog.focusSessionsClaimed` (đóng lỗ hổng XP cuối)
+- [x] feat-journey-density — timeline mặc định 7 ngày + "Xem thêm"; mobile: widgets (huy chương/weight/backup) lên TRƯỚC timeline (3 grid item + order classes, desktop không đổi); nút thêm ảnh chỉ ≤7 ngày gần
+- [x] feat-ui-language-a11y — `data/categories.ts` nhãn VI (giá trị lưu giữ EN); aria-label cho mọi icon-only button; quy ước ngôn ngữ ghi ở PATTERNS
+- [x] feat-transaction-edit — sửa giao dịch (Pencil → form edit mode + Hủy, KHÔNG XP); Income Trajectory ẩn khi <2 tháng dữ liệu
+- [x] feat-weekly-review — WeeklyReviewModal đầu tuần (routine/tasks/chi tiêu vs tuần trước, không XP), `utils/weekly.ts` pure + 8 tests, marker `ironwill_weekly_review_done`
+
 Roadmap v0.4.0:
-- [ ] PWA support (Service Worker, install prompt)
+- [x] PWA support (Service Worker, install prompt) — đã xong từ trước, hoàn thiện assets ở GĐ2
 - [ ] Monthly view cho Treasury (filter theo tháng)
 - [ ] Quest templates theo category

@@ -1,5 +1,5 @@
 import React from 'react';
-import { playElectricZap } from '../utils/audio';
+import { playElectricZap, zapReady } from '../utils/audio';
 
 // AWAKEN "system boot" glitch — a short electric-malfunction intro played every
 // time the user enters the app (after login / guest entry). Self-contained:
@@ -42,18 +42,40 @@ interface BootIntroProps {
 }
 
 export default function BootIntro({ onDone, soundEnabled }: BootIntroProps) {
+  // Đồng bộ hình + tiếng: chờ sample zap sẵn sàng (tối đa 250ms — decode trên iPhone
+  // mất 100–300ms) rồi mới START cả animation lẫn âm thanh cùng một khung hình.
+  // Trước đây hình chạy ngay còn tiếng vào trễ → "chưa đồng đều" (device test round 2).
+  const [started, setStarted] = React.useState(false);
   // Guard ONLY the sound so React 19 StrictMode's double-invoke (dev) doesn't play
   // the zap twice (which sounds out-of-sync). The timer is set/cleared each invoke
   // so StrictMode cleanup doesn't leave the intro stuck.
   const zappedRef = React.useRef(false);
   React.useEffect(() => {
-    if (soundEnabled && !zappedRef.current) {
-      zappedRef.current = true;
-      playElectricZap();
+    let cancelled = false;
+    const begin = () => {
+      if (cancelled) return;
+      if (soundEnabled && !zappedRef.current) {
+        zappedRef.current = true;
+        playElectricZap();
+      }
+      setStarted(true);
+    };
+    if (soundEnabled) {
+      Promise.race([zapReady(), new Promise(r => setTimeout(r, 250))]).then(begin);
+    } else {
+      begin();
     }
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    if (!started) return;
     const t = setTimeout(onDone, 1500);
     return () => clearTimeout(t);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [started]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Màn đen tĩnh trong lúc chờ audio (tối đa 250ms) — không nhiễu, không tiếng.
+  if (!started) return <div className="fixed inset-0 z-[100] bg-black" />;
 
   return (
     <div

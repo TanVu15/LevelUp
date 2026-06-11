@@ -12,12 +12,14 @@ import {
   X
 } from 'lucide-react';
 import { Transaction, ExpenseCategory } from '../types';
+import { EXPENSE_CATEGORIES, getCategoryLabel } from '../data/categories';
 import { playClickSound, playQuestSuccessSound } from '../utils/audio';
 import { getCurrentYearMonth, toISODate } from '../utils/date';
 
 interface TreasuryBoardProps {
   transactions: Transaction[];
   addTransaction: (title: string, amount: number, type: 'INCOME' | 'EXPENSE', category: ExpenseCategory | 'Income Source') => void;
+  updateTransaction: (id: string, patch: { title: string; amount: number; type: 'INCOME' | 'EXPENSE'; category: ExpenseCategory | 'Income Source' }) => void;
   deleteTransaction: (id: string) => void;
   soundEnabled: boolean;
   currentMonthBudget: number;
@@ -27,6 +29,7 @@ interface TreasuryBoardProps {
 export default function TreasuryBoard({
   transactions,
   addTransaction,
+  updateTransaction,
   deleteTransaction,
   soundEnabled,
   currentMonthBudget,
@@ -37,6 +40,8 @@ export default function TreasuryBoard({
   const [amountStr, setAmountStr] = React.useState('');
   const [type, setType] = React.useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [category, setCategory] = React.useState<ExpenseCategory | 'Income Source'>('Gym & Nutrition');
+  const [editingId, setEditingId] = React.useState<string | null>(null); // sửa giao dịch (feat-transaction-edit)
+  const formRef = React.useRef<HTMLDivElement>(null);
 
   // Budget editing
   const [editingBudget, setEditingBudget] = React.useState(false);
@@ -114,9 +119,30 @@ export default function TreasuryBoard({
       }
     }
 
-    addTransaction(title.trim(), parsedAmount, type, category);
+    if (editingId) {
+      updateTransaction(editingId, { title: title.trim(), amount: parsedAmount, type, category });
+    } else {
+      addTransaction(title.trim(), parsedAmount, type, category);
+    }
 
     // Reset fields
+    setEditingId(null);
+    setTitle('');
+    setAmountStr('');
+  };
+
+  const startEdit = (t: Transaction) => {
+    if (soundEnabled) playClickSound();
+    setEditingId(t.id);
+    setTitle(t.title);
+    setAmountStr(String(t.amount));
+    setType(t.type);
+    setCategory(t.category);
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
     setTitle('');
     setAmountStr('');
   };
@@ -127,15 +153,7 @@ export default function TreasuryBoard({
   };
 
   // Compute category distributions for custom SVG bars
-  const expenseCategories: ExpenseCategory[] = [
-    'Gym & Nutrition',
-    'Work & Gear',
-    'Books & Growth',
-    'Rent & Utilities',
-    'Unnecessary Leaks'
-  ];
-
-  const categoryTotals = expenseCategories.map(cat => {
+  const categoryTotals = EXPENSE_CATEGORIES.map(cat => {
     const total = filteredTransactions
       .filter(t => t.type === 'EXPENSE' && t.category === cat)
       .reduce((sum, t) => sum + t.amount, 0);
@@ -340,7 +358,7 @@ export default function TreasuryBoard({
                   <div className="flex justify-between text-xs font-mono text-zinc-300">
                     <span className="flex items-center gap-1.5">
                       <span className={`w-2.5 h-2.5 rounded-full ${isLeak ? 'bg-red-500' : 'bg-orange-500'}`}></span>
-                      {catObj.name === 'Unnecessary Leaks' ? 'Discretionary Spend (Tùy ý)' : catObj.name}
+                      {getCategoryLabel(catObj.name)}
                     </span>
                     <span className="font-bold">{formatVND(catObj.total)}</span>
                   </div>
@@ -362,8 +380,8 @@ export default function TreasuryBoard({
           </div>
         </div>
 
-        {/* ── INCOME TRAJECTORY ────────────────────────────────────────────── */}
-        {incomeMonths.length > 0 && (
+        {/* ── INCOME TRAJECTORY — cần ≥2 tháng mới có "trajectory" để nhìn ── */}
+        {incomeMonths.length >= 2 && (
           <div className="bg-zinc-900/45 border border-white/10 rounded-xl p-6">
             <h2 className="text-xs font-bold font-mono tracking-widest text-orange-500 mb-1 uppercase">// INCOME TRAJECTORY</h2>
             <p className="text-[10px] font-mono text-zinc-600 mb-5">Thu nhập theo tháng (đơn vị: triệu VND)</p>
@@ -420,9 +438,9 @@ export default function TreasuryBoard({
         )}
 
         {/* Quick Transaction Adding Form */}
-        <div className="bg-zinc-900/45 border border-white/10 rounded-xl p-6">
+        <div ref={formRef} className="bg-zinc-900/45 border border-white/10 rounded-xl p-6">
           <h2 className="text-xs font-bold font-mono tracking-widest text-orange-500 mb-4 uppercase">
-            // LOG NEW CASH FLOW
+            {editingId ? '// SỬA GIAO DỊCH' : '// LOG NEW CASH FLOW'}
           </h2>
 
           <form onSubmit={handleFormSubmit} className="space-y-4">
@@ -489,11 +507,9 @@ export default function TreasuryBoard({
                     onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
                     className="w-full bg-black/60 border border-white/5 focus:border-orange-500 focus:outline-none rounded-lg px-3 py-3 text-xs text-neutral-300 font-mono"
                   >
-                    <option value="Gym & Nutrition">Gym & Dinh Dưỡng</option>
-                    <option value="Work & Gear">Công cụ & Gear</option>
-                    <option value="Books & Growth">Sách x Phát Triển</option>
-                    <option value="Rent & Utilities">Shelter & Sinh hoạt</option>
-                    <option value="Unnecessary Leaks">Discretionary (Tùy ý)</option>
+                    {EXPENSE_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{getCategoryLabel(cat)}</option>
+                    ))}
                   </select>
                 ) : (
                   <select
@@ -511,8 +527,17 @@ export default function TreasuryBoard({
               type="submit"
               className="w-full py-3 bg-orange-600 hover:bg-orange-500 border border-orange-600/40 rounded-lg text-black font-black italic uppercase transition-all shadow-md shadow-orange-950/20"
             >
-              RECORD TRANSACTION (+10 EXP)
+              {editingId ? 'CẬP NHẬT GIAO DỊCH' : 'RECORD TRANSACTION (+10 EXP)'}
             </button>
+            {editingId && (
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="w-full py-2 text-[11px] font-mono text-zinc-500 hover:text-zinc-300 border border-white/5 hover:border-white/10 rounded-lg transition-all"
+              >
+                Hủy sửa
+              </button>
+            )}
           </form>
         </div>
 
@@ -583,7 +608,7 @@ export default function TreasuryBoard({
                     }`}
                   >
                     <span className={`w-1.5 h-1.5 rounded-full ${isLeak ? 'bg-rose-500' : 'bg-orange-500'}`} />
-                    <span className="truncate max-w-[100px]">{c.name}</span>
+                    <span className="truncate max-w-[120px]">{getCategoryLabel(c.name)}</span>
                     <span className="font-bold text-white">{c.total.toLocaleString('vi-VN')} ₫</span>
                     <span className="text-zinc-500">({pct}%)</span>
                   </div>
@@ -605,7 +630,7 @@ export default function TreasuryBoard({
                 >
                   <div className="min-w-0">
                     <span className="text-[9px] uppercase font-mono tracking-widest block text-neutral-500">
-                      {t.category} — {t.date}
+                      {getCategoryLabel(t.category)} — {t.date}
                     </span>
                     <span className="text-xs font-bold text-neutral-200 truncate block mt-0.5">
                       {t.title}
@@ -620,7 +645,15 @@ export default function TreasuryBoard({
                     </span>
 
                     <button
+                      onClick={() => startEdit(t)}
+                      aria-label={`Sửa giao dịch ${t.title}`}
+                      className="p-1 rounded hover:bg-neutral-900 text-neutral-600 hover:text-orange-400 transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       onClick={() => handleDeleteClick(t.id)}
+                      aria-label={`Xóa giao dịch ${t.title}`}
                       className="p-1 rounded hover:bg-neutral-900 text-neutral-600 hover:text-red-400 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

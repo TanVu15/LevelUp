@@ -21,11 +21,12 @@ interface Props {
   onPhotoUpload: (date: string) => void;
   onPhotoDelete: (date: string) => void;
   onLightbox: (url: string) => void;
+  canUploadPhoto: boolean; // chỉ ngày gần (≤7 ngày) hiện nút thêm ảnh — ảnh đã có vẫn hiển thị
 }
 
 export default function TimelineEntry({
   entry, noteText, onNoteChange, onNoteBlur,
-  onPhotoUpload, onPhotoDelete, onLightbox,
+  onPhotoUpload, onPhotoDelete, onLightbox, canUploadPhoto,
 }: Props) {
   const routineVals = Object.values(entry.routines);
   // Include photo in hasContent so photo-only days show up
@@ -103,13 +104,14 @@ export default function TimelineEntry({
               />
               <button
                 onClick={() => onPhotoDelete(entry.isoDate)}
+                aria-label="Xóa ảnh ngày này"
                 className="absolute -top-1.5 -right-1.5 bg-red-600 rounded-full w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 <X className="w-2.5 h-2.5 text-white" />
               </button>
               <span className="text-[8px] font-mono text-zinc-600 block text-center mt-1">Body check</span>
             </div>
-          ) : (
+          ) : canUploadPhoto ? (
             <button
               onClick={() => onPhotoUpload(entry.isoDate)}
               className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-zinc-700 text-zinc-600 hover:border-sky-500/50 hover:text-sky-400 transition-all text-xs font-mono"
@@ -117,7 +119,7 @@ export default function TimelineEntry({
               <Camera className="w-3.5 h-3.5" />
               {entry.isToday ? 'Check body hôm nay' : 'Thêm ảnh ngày này'}
             </button>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

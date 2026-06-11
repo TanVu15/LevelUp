@@ -12,16 +12,21 @@ import CelebrationToast from './components/CelebrationToast';
 import MonthlyReviewModal, { MonthlyReviewState } from './components/MonthlyReviewModal';
 import { Task, Transaction, DayLog, Achievement, TaskTier, ExpenseCategory, WhyCard, RoutineDef } from './types';
 import { playClickSound, playLevelUpSound, playQuestSuccessSound } from './utils/audio';
-import { loadAvatar, loadAllBodyPhotos, saveAvatar, saveBodyPhoto, deleteBodyPhoto, compressImage } from './utils/imageDB';
+import { loadAvatar, loadAllBodyPhotos, saveAvatar, saveBodyPhoto, deleteBodyPhoto, compressImage, clearAllImages } from './utils/imageDB';
+import DeleteAccountModal from './components/DeleteAccountModal';
 import { isConfigured, loadFirebase } from './firebase';
-import { GameState } from './utils/firestoreSync';
+import { GameState, saveGameState } from './utils/firestoreSync';
 import { useFirebaseSync } from './hooks/useFirebaseSync';
+import { touchLocalUpdatedAt } from './utils/syncMeta';
+import SyncConflictModal from './components/SyncConflictModal';
 const AuthModal = React.lazy(() => import('./components/AuthModal'));
 import ImportConfirmModal from './components/ImportConfirmModal';
 import { exportBackup, migrate, SCHEMA_VERSION, BackupData } from './utils/schema';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
-import { getTodayDateString, getCurrentYearMonth } from './utils/date';
-import { getRankForLevel, getXpNeeded, applyXpGain, DAILY_TASK_XP_CAP, DAILY_TIER_CAPS } from './utils/xp';
+import { getTodayDateString, getCurrentYearMonth, addDays } from './utils/date';
+import { getWeekStart, computeWeeklyReview, hasWeeklyActivity, WeeklyReviewData } from './utils/weekly';
+import WeeklyReviewModal from './components/WeeklyReviewModal';
+import { getRankForLevel, getXpNeeded, applyXpGain, DAILY_TASK_XP_CAP, DAILY_TIER_CAPS, FOCUS_XP, DAILY_FOCUS_CAP } from './utils/xp';
 import { getDailyChallenge, checkChallengeCondition } from './utils/challenge';
 import { DEFAULT_ROUTINES, MAX_ROUTINES, makeRoutineId, buildRoutinesFromLegacy } from './data/routines';
 import { getStreakMilestoneMsg, computeStreakRollover } from './utils/streak';
@@ -83,6 +88,7 @@ export default function App() {
   const [whyCards, setWhyCards] = usePersistedState<WhyCard[]>('ironwill_why_cards', [], codecs.json());
   const [monthlyBudgets, setMonthlyBudgets] = usePersistedState<Record<string, number>>('ironwill_monthly_budgets', {}, codecs.json());
   const [monthlyReview, setMonthlyReview] = React.useState<MonthlyReviewState | null>(null);
+  const [weeklyReview, setWeeklyReview] = React.useState<WeeklyReviewData | null>(null);
   // Custom routines — single source of truth. Migrates legacy label/desc maps for
   // users who predate this feature. See feat-custom-routines / data/routines.ts.
   const [routines, setRoutines] = React.useState<RoutineDef[]>(() => {
@@ -238,6 +244,22 @@ export default function App() {
     localStorage.setItem('ironwill_schema_version', String(SCHEMA_VERSION));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── WEEKLY REVIEW (feat-weekly-review) ─────────────────────────────────────
+  // Effect riêng, chạy 1 lần khi mount (KHÔNG đụng date-reset effect). Marker theo
+  // tuần hiện tại → mỗi tuần hỏi đúng 1 lần; tuần trước trống thì im lặng bỏ qua.
+  React.useEffect(() => {
+    if (!onboardingDone) return; // user mới: chưa có gì để review, không đốt marker
+    const currentWeekStart = getWeekStart(getTodayDateString());
+    if (localStorage.getItem('ironwill_weekly_review_done') === currentWeekStart) return;
+    localStorage.setItem('ironwill_weekly_review_done', currentWeekStart);
+    const review = computeWeeklyReview({
+      logs, tasks, archivedTasks, transactions,
+      routineCount: routines.length,
+      weekStart: addDays(currentWeekStart, -7),
+    });
+    if (hasWeeklyActivity(review.current)) setWeeklyReview(review);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── FIREBASE AUTH ───────────────────────────────────────────────────────────
   const applyGameState = React.useCallback((s: GameState) => {
     const today = getTodayDateString();
@@ -282,10 +304,22 @@ export default function App() {
     tasks, archivedTasks, transactions, weightLogs, logs, achievements,
   ]);
 
+  // Stamp thời điểm thay đổi dữ liệu local (skip mount) — conflict detection khi login
+  // (feat-sync-hardening REQ-01). gameState memo chỉ đổi identity khi field thật sự đổi.
+  const firstGameStateRef = React.useRef(true);
+  React.useEffect(() => {
+    if (firstGameStateRef.current) { firstGameStateRef.current = false; return; }
+    touchLocalUpdatedAt();
+  }, [gameState]);
+
+  // Cloud state đang chờ user phân xử (local mới hơn cloud) — REQ-02/03.
+  const [syncConflict, setSyncConflict] = React.useState<GameState | null>(null);
+
   const currentUser = useFirebaseSync({
     state: gameState,
     applyState: applyGameState,
     onUserChange: (user) => { if (user) setShowAuthModal(false); }, // close auth gate on login
+    onConflict: (cloud) => setSyncConflict(cloud),
   });
 
   // Persistence is handled per-key by usePersistedState; level/xp by the effect
@@ -421,6 +455,12 @@ export default function App() {
 
   const deleteTransaction = (id: string) => setTransactions(prev => prev.filter(t => t.id !== id));
 
+  // Sửa giao dịch — KHÔNG cộng XP (sửa không phải log mới), giữ nguyên id/date (feat-transaction-edit).
+  const updateTransaction = (
+    id: string,
+    patch: { title: string; amount: number; type: 'INCOME' | 'EXPENSE'; category: Transaction['category'] },
+  ) => setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
+
   const toggleRoutine = (routineId: string) => {
     const today = getTodayDateString();
     const nextDone = !dailyRoutines[routineId];
@@ -494,6 +534,25 @@ export default function App() {
     setDailyRoutines(Object.fromEntries(DEFAULT_ROUTINES.map(r => [r.id, false])));
   };
 
+  // Focus timer hoàn thành 1 phiên — award FOCUS_XP nếu chưa chạm cap ngày
+  // (DayLog.focusSessionsClaimed, feat-focus-timer-hardening). Return: có XP không.
+  const focusSessionsToday = logs.find(l => l.date === getTodayDateString())?.focusSessionsClaimed ?? 0;
+  const handleFocusComplete = (): boolean => {
+    const today = getTodayDateString();
+    const claimed = logs.find(l => l.date === today)?.focusSessionsClaimed ?? 0;
+    if (claimed >= DAILY_FOCUS_CAP) return false;
+    addXP(FOCUS_XP);
+    setLogs(prevLogs => {
+      const entry = prevLogs.find(l => l.date === today);
+      const updated: DayLog = {
+        ...(entry ?? { date: today, routines: {}, note: '' }),
+        focusSessionsClaimed: (entry?.focusSessionsClaimed ?? 0) + 1,
+      };
+      return entry ? prevLogs.map(l => l.date === today ? updated : l) : [...prevLogs, updated];
+    });
+    return true;
+  };
+
   const claimDailyChallenge = () => {
     const today = getTodayDateString();
     if (logs.find(l => l.date === today)?.dailyChallengeClaimed) return;
@@ -565,6 +624,35 @@ export default function App() {
       .filter(k => k.startsWith('ironwill_'))
       .forEach(k => localStorage.removeItem(k));
     window.location.reload();
+  };
+
+  // Xóa tài khoản (feat-account-lifecycle REQ-02): cloud doc → auth user → local.
+  // KHÔNG xóa local nếu cloud/account chưa xóa xong (an toàn khi fail giữa chừng).
+  const [showDeleteAccount, setShowDeleteAccount] = React.useState(false);
+  const handleDeleteAccount = async (): Promise<string | null> => {
+    if (!currentUser) return 'Chưa đăng nhập.';
+    try {
+      const fb = await loadFirebase();
+      if (!fb) return 'Không kết nối được Firebase. Thử lại sau.';
+      const { doc, deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(doc(fb.db, 'users', currentUser.uid));
+      await currentUser.delete();
+    } catch (e) {
+      const code = (e as { code?: string }).code ?? '';
+      if (code === 'auth/requires-recent-login') {
+        return 'Vì bảo mật, hãy đăng xuất, đăng nhập lại rồi thử xóa lần nữa.';
+      }
+      if (code === 'unavailable' || code === 'auth/network-request-failed') {
+        return 'Lỗi mạng. Kiểm tra kết nối rồi thử lại.';
+      }
+      return `Xóa thất bại (${code || 'không rõ'}). Thử lại sau.`;
+    }
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('ironwill_'))
+      .forEach(k => localStorage.removeItem(k));
+    await clearAllImages();
+    window.location.reload();
+    return null;
   };
 
   // Closing the auth modal without signing in → mark as guest so modal doesn't re-show
@@ -659,11 +747,21 @@ export default function App() {
       {!onboardingDone && !showAuthModal && <OnboardingModal onComplete={handleOnboardingComplete} onSkip={handleOnboardingSkip} onShowAuth={isConfigured ? () => setShowAuthModal(true) : undefined} />}
       <LevelUpModal info={levelUpInfo} onClose={() => setLevelUpInfo(null)} />
       <CelebrationToast message={toastMsg} onClose={() => setToastMsg(null)} />
+      {/* Weekly TRƯỚC Monthly trong DOM → đầu tháng trùng đầu tuần thì Monthly đè (ưu tiên ritual tháng) */}
+      <WeeklyReviewModal review={weeklyReview} onClose={() => setWeeklyReview(null)} />
       <MonthlyReviewModal review={monthlyReview} onConfirm={handleMonthlyReviewConfirm} />
       {showAuthModal && (
         <React.Suspense fallback={null}>
           <AuthModal onClose={handleCloseAuthModal} />
         </React.Suspense>
+      )}
+      {syncConflict && currentUser && (
+        <SyncConflictModal
+          cloud={syncConflict}
+          local={gameState}
+          onUseCloud={() => { applyGameState(syncConflict); setSyncConflict(null); }}
+          onUseLocal={() => { saveGameState(currentUser.uid, gameState); setSyncConflict(null); }}
+        />
       )}
 
       <AppBackdrop themeStyle={themeStyle} />
@@ -718,7 +816,8 @@ export default function App() {
               tasks={tasks} archivedTasks={archivedTasks}
               addTask={addTask} toggleTask={toggleTask} deleteTask={deleteTask}
               dailyRoutines={dailyRoutines} toggleRoutine={toggleRoutine}
-              disciplineMode={disciplineMode} soundEnabled={soundEnabled} addXP={addXP}
+              disciplineMode={disciplineMode} soundEnabled={soundEnabled}
+              onFocusComplete={handleFocusComplete} focusSessionsToday={focusSessionsToday}
               whyCards={whyCards} setWhyCards={setWhyCards}
               routines={routines}
               addRoutine={addRoutine} updateRoutine={updateRoutine}
@@ -735,7 +834,8 @@ export default function App() {
           {activeTab === 'TREASURY' && (
             <TreasuryBoard
               transactions={transactions} addTransaction={addTransaction}
-              deleteTransaction={deleteTransaction} soundEnabled={soundEnabled}
+              deleteTransaction={deleteTransaction} updateTransaction={updateTransaction}
+              soundEnabled={soundEnabled}
               currentMonthBudget={monthlyBudgets[getCurrentYearMonth()] || 0}
               setCurrentMonthBudget={setCurrentMonthBudget}
             />
@@ -753,6 +853,14 @@ export default function App() {
               isLoggedIn={!!currentUser}
               userEmail={currentUser?.email ?? null}
               onShowAuth={isConfigured ? () => setShowAuthModal(true) : undefined}
+              onDeleteAccount={currentUser ? () => setShowDeleteAccount(true) : undefined}
+            />
+          )}
+          {showDeleteAccount && (
+            <DeleteAccountModal
+              email={currentUser?.email ?? null}
+              onConfirm={handleDeleteAccount}
+              onCancel={() => setShowDeleteAccount(false)}
             />
           )}
           {pendingImport && (
