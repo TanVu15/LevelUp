@@ -14,3 +14,11 @@ dist-ssr
 
 # Firebase CLI cache
 .firebase/
+
+# Playwright E2E artifacts
+test-results/
+playwright-report/
+
+# Audit/screenshot script output (scripts/audit-preview.mjs, ui-review.mjs, shot-weekly.mjs)
+scripts/audit-mobile.png
+scripts/ui-*.png
