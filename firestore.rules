@@ -8,10 +8,13 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
-      // Chỉ cho ghi doc của chính mình, và giới hạn kích thước doc (~1MB Firestore cap)
-      allow write: if request.auth != null
-                   && request.auth.uid == uid
-                   && request.resource.data.size() < 200;
+      // Chỉ cho ghi doc của chính mình, giới hạn số field (chống doc phình to).
+      // LƯU Ý: delete PHẢI tách riêng — request.resource là null khi delete,
+      // gộp chung "write" sẽ từ chối xóa tài khoản (bug phát hiện qua device test).
+      allow create, update: if request.auth != null
+                            && request.auth.uid == uid
+                            && request.resource.data.size() < 200;
+      allow delete: if request.auth != null && request.auth.uid == uid;
     }
 
     // Chặn tất cả path còn lại.
