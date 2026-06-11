@@ -23,6 +23,7 @@ export interface GameState {
   logs: DayLog[];
   achievements: Achievement[];
   lastOpenDate: string;
+  updatedAt?: number; // epoch ms, stamp lúc save — conflict detection (feat-sync-hardening). KHÔNG đưa vào BackupData.
 }
 
 function isValidGameState(data: unknown): data is GameState {
@@ -53,7 +54,7 @@ export async function saveGameState(uid: string, state: GameState): Promise<void
     const fb = await loadFirebase();
     if (!fb) return;
     const { doc, setDoc } = await import('firebase/firestore');
-    await setDoc(doc(fb.db, 'users', uid), state);
+    await setDoc(doc(fb.db, 'users', uid), { ...state, updatedAt: Date.now() });
   } catch {
     // Silently ignore — app works offline, next save will retry
   }

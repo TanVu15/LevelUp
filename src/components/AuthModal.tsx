@@ -3,6 +3,7 @@ import { X, Mail, Lock, Zap, LogIn, UserPlus } from 'lucide-react';
 import {
   GoogleAuthProvider, signInWithPopup,
   signInWithEmailAndPassword, createUserWithEmailAndPassword,
+  sendPasswordResetEmail, sendEmailVerification,
 } from 'firebase/auth';
 import type { Auth, AuthError } from 'firebase/auth';
 import { loadFirebase } from '../firebase';
@@ -20,6 +21,18 @@ const GoogleIcon = () => (
     <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
   </svg>
 );
+
+// iOS standalone (app cài từ Safari): KHÔNG có cách đăng nhập Google tin cậy —
+// popup không quay về app (round 1), redirect thì Google sập "Đã xảy ra lỗi" vì
+// iOS cô lập storage của tấm trình duyệt nhúng (round 4, đã thử cả 2). Đây là giới
+// hạn Apple, không phải config. UI: ẩn nút Google, hiện hướng dẫn dùng Email/Mật khẩu.
+// Desktop + Android + Safari thường: popup chạy tốt (đã xác nhận desktop).
+const isIosStandalone = typeof window !== 'undefined'
+  && /iPad|iPhone|iPod/.test(navigator.userAgent)
+  && (
+    window.matchMedia?.('(display-mode: standalone)').matches
+    || (navigator as unknown as { standalone?: boolean }).standalone === true
+  );
 
 function getFriendlyError(code: string): string {
   switch (code) {
@@ -48,9 +61,10 @@ export default function AuthModal({ onClose }: AuthModalProps) {
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [loading, setLoading]                 = React.useState(false);
   const [error, setError]                     = React.useState('');
+  const [info, setInfo]                       = React.useState(''); // thông báo trung tính (reset password)
   const [auth, setAuth]                       = React.useState<Auth | null>(null);
 
-  const clearError = () => setError('');
+  const clearError = () => { setError(''); setInfo(''); };
 
   React.useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -69,6 +83,7 @@ export default function AuthModal({ onClose }: AuthModalProps) {
     warmupAudio(); // prime audio on this gesture so the intro spark fires instantly
     setLoading(true);
     setError('');
+    setInfo('');
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
@@ -80,6 +95,28 @@ export default function AuthModal({ onClose }: AuthModalProps) {
       console.error('[Google sign-in]', (e as AuthError).code, e);
       const msg = getFriendlyError((e as AuthError).code ?? '');
       if (msg) setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!auth) return;
+    if (!email.trim()) { setError('Nhập email trước khi đặt lại mật khẩu.'); return; }
+    setLoading(true);
+    setError('');
+    setInfo('');
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setInfo('Nếu email tồn tại, link đặt lại mật khẩu đã được gửi. Kiểm tra hộp thư (cả mục spam).');
+    } catch (e) {
+      const code = (e as AuthError).code ?? '';
+      // Cùng thông báo trung tính khi email không tồn tại — chống dò email (REQ-01).
+      if (code === 'auth/user-not-found') {
+        setInfo('Nếu email tồn tại, link đặt lại mật khẩu đã được gửi. Kiểm tra hộp thư (cả mục spam).');
+      } else {
+        setError(getFriendlyError(code));
+      }
     } finally {
       setLoading(false);
     }
@@ -98,11 +135,14 @@ export default function AuthModal({ onClose }: AuthModalProps) {
     }
     setLoading(true);
     setError('');
+    setInfo('');
     try {
       if (tab === 'login') {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        // Xác minh email — fire-and-forget, KHÔNG chặn dùng app (local-first).
+        sendEmailVerification(cred.user).catch(() => {});
       }
       onClose();
     } catch (e) {
@@ -127,7 +167,7 @@ export default function AuthModal({ onClose }: AuthModalProps) {
               <p className="text-xs font-black text-white font-mono uppercase italic leading-tight">Bắt đầu hành trình</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-zinc-600 hover:text-white transition-colors">
+          <button onClick={onClose} aria-label="Đóng — chơi không cần tài khoản" className="text-zinc-600 hover:text-white transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -140,22 +180,31 @@ export default function AuthModal({ onClose }: AuthModalProps) {
         </div>
 
         <div className="px-6 py-4 space-y-3">
-          {/* Google */}
-          <button
-            onClick={handleGoogle}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-3 py-2.5 px-4 bg-white hover:bg-zinc-100 text-zinc-900 font-semibold text-sm rounded-lg transition-all disabled:opacity-50"
-          >
-            <GoogleIcon />
-            Tiếp tục với Google
-          </button>
+          {/* Google — ẩn trong app iOS đã cài (Apple chặn flow, xem isIosStandalone) */}
+          {isIosStandalone ? (
+            <p className="text-[10px] font-mono text-zinc-500 bg-zinc-900/60 border border-white/5 rounded-lg px-3 py-2.5 leading-relaxed">
+              <span className="text-zinc-300">Đăng nhập Google không khả dụng trong app đã cài trên iOS</span> (giới hạn của Apple).
+              Dùng Email/Mật khẩu bên dưới — cùng tài khoản, cùng dữ liệu.
+            </p>
+          ) : (
+            <>
+              <button
+                onClick={handleGoogle}
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-3 py-2.5 px-4 bg-white hover:bg-zinc-100 text-zinc-900 font-semibold text-sm rounded-lg transition-all disabled:opacity-50"
+              >
+                <GoogleIcon />
+                Tiếp tục với Google
+              </button>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-white/8" />
-            <span className="text-[10px] font-mono text-zinc-700 uppercase">hoặc</span>
-            <div className="flex-1 h-px bg-white/8" />
-          </div>
+              {/* Divider */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-white/8" />
+                <span className="text-[10px] font-mono text-zinc-700 uppercase">hoặc</span>
+                <div className="flex-1 h-px bg-white/8" />
+              </div>
+            </>
+          )}
 
           {/* Tabs */}
           <div className="flex rounded-lg bg-black/50 border border-white/5 p-0.5">
@@ -214,9 +263,27 @@ export default function AuthModal({ onClose }: AuthModalProps) {
               </div>
             )}
 
+            {tab === 'login' && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleResetPassword}
+                  disabled={loading}
+                  className="text-[10px] font-mono text-zinc-600 hover:text-orange-400 transition-colors disabled:opacity-50"
+                >
+                  Quên mật khẩu?
+                </button>
+              </div>
+            )}
+
             {error && (
               <p className="text-[11px] text-red-400 font-mono bg-red-950/20 border border-red-800/30 rounded px-3 py-2">
                 {error}
+              </p>
+            )}
+            {info && (
+              <p className="text-[11px] text-emerald-400 font-mono bg-emerald-950/20 border border-emerald-800/30 rounded px-3 py-2">
+                {info}
               </p>
             )}
 
@@ -236,6 +303,13 @@ export default function AuthModal({ onClose }: AuthModalProps) {
           >
             Chơi không cần tài khoản →
           </button>
+
+          <p className="text-[9px] font-mono text-zinc-700 text-center leading-relaxed">
+            Tiếp tục nghĩa là bạn đồng ý với{' '}
+            <a href="/privacy.html" target="_blank" rel="noopener" className="text-zinc-500 hover:text-orange-400 underline transition-colors">
+              Chính sách quyền riêng tư
+            </a>.
+          </p>
         </div>
       </div>
     </div>
