@@ -218,6 +218,7 @@ export default function StatusHeader({
           </div>
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
+            aria-label={soundEnabled ? 'Tắt âm thanh' : 'Bật âm thanh'}
             className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-orange-500 transition-colors border border-white/5"
           >
             {soundEnabled ? <Volume2 className="w-4 h-4 text-orange-500" /> : <VolumeX className="w-4 h-4" />}
@@ -233,6 +234,7 @@ export default function StatusHeader({
                 <button
                   onClick={onSignOut}
                   title="Đăng xuất"
+                  aria-label="Đăng xuất"
                   className="p-1 rounded hover:bg-zinc-800 text-zinc-600 hover:text-red-400 transition-colors"
                 >
                   <LogOut className="w-3.5 h-3.5" />

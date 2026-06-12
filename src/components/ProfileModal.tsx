@@ -68,7 +68,7 @@ export default function ProfileModal({
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-zinc-900 border-b border-white/10">
           <span className="text-[10px] font-mono font-bold tracking-widest text-orange-500 uppercase">// Player Profile</span>
-          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
+          <button onClick={onClose} aria-label="Đóng hồ sơ" className="text-zinc-500 hover:text-white transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>

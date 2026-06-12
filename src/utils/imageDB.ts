@@ -73,6 +73,18 @@ export async function deleteBodyPhoto(date: string): Promise<void> {
   });
 }
 
+/** Xóa toàn bộ ảnh (avatar + body photos) — dùng khi xóa tài khoản (feat-account-lifecycle). */
+export async function clearAllImages(): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction(['avatar', 'body_photos'], 'readwrite');
+    tx.objectStore('avatar').clear();
+    tx.objectStore('body_photos').clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror    = () => resolve();
+  });
+}
+
 export function compressImage(file: File, maxWidth = 1200, quality = 0.82): Promise<string> {
   if (!file.type.startsWith('image/')) return Promise.reject(new Error('File không phải ảnh.'));
   return new Promise((resolve, reject) => {

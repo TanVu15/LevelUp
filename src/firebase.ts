@@ -43,6 +43,23 @@ export function loadFirebase(): Promise<FirebaseInstance> | null {
         import('firebase/firestore'),
       ]);
       const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+
+      // App Check (feat-app-check): chỉ kích hoạt khi có site key trong env.
+      // Dev → bật debug token (SDK in token ra console, đăng ký ở Firebase console).
+      const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY as string | undefined;
+      if (siteKey) {
+        try {
+          if (import.meta.env.DEV) {
+            (self as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN?: boolean }).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+          }
+          const { initializeAppCheck, ReCaptchaV3Provider } = await import('firebase/app-check');
+          initializeAppCheck(app, {
+            provider: new ReCaptchaV3Provider(siteKey),
+            isTokenAutoRefreshEnabled: true,
+          });
+        } catch { /* App Check fail không chặn app — Firestore chỉ từ chối khi đã enforce */ }
+      }
+
       return { app, auth: getAuth(app), db: getFirestore(app) };
     })();
   }

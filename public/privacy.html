@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chính sách quyền riêng tư — LevelUp</title>
+  <meta name="robots" content="noindex" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; padding: 2.5rem 1.25rem 4rem;
+      background: #0F0F12; color: #d4d4d8;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.7; font-size: 15px;
+    }
+    main { max-width: 680px; margin: 0 auto; }
+    h1 { color: #fff; font-size: 1.5rem; font-style: italic; }
+    h1 span { color: #ea580c; }
+    h2 { color: #ea580c; font-size: 1.05rem; margin-top: 2.2rem; }
+    a { color: #fb923c; }
+    .meta { color: #71717a; font-size: 0.8rem; font-family: ui-monospace, monospace; }
+    ul { padding-left: 1.2rem; }
+    li { margin: 0.35rem 0; }
+    .back { display: inline-block; margin-bottom: 1.5rem; color: #71717a; text-decoration: none; font-size: 0.85rem; }
+    .back:hover { color: #fb923c; }
+  </style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">&larr; Quay lại LevelUp</a>
+  <h1><span>LevelUp</span> — Chính sách quyền riêng tư</h1>
+  <p class="meta">Hiệu lực từ: 11/06/2026 · Phiên bản 1.0</p>
+
+  <h2>1. Tóm tắt 30 giây</h2>
+  <ul>
+    <li>LevelUp hoạt động <strong>offline-first</strong>: toàn bộ dữ liệu mặc định nằm trên thiết bị của bạn.</li>
+    <li>Chỉ khi bạn <strong>đăng nhập</strong>, dữ liệu game mới được sao lưu lên cloud (Google Firebase) để đồng bộ giữa các thiết bị.</li>
+    <li>Ảnh (avatar, ảnh cơ thể) <strong>không bao giờ rời thiết bị</strong> — chỉ nằm trong file backup bạn tự tải về.</li>
+    <li>Không quảng cáo, không analytics bên thứ ba, không bán hay chia sẻ dữ liệu cho bất kỳ ai.</li>
+  </ul>
+
+  <h2>2. Dữ liệu nào được lưu, ở đâu</h2>
+  <ul>
+    <li><strong>Trên thiết bị (localStorage / IndexedDB):</strong> tên hiển thị, level/XP/streak, nhiệm vụ, thói quen, ghi chú hằng ngày, giao dịch thu chi (số tiền bạn tự nhập), cân nặng, ảnh avatar và ảnh cơ thể.</li>
+    <li><strong>Trên cloud (chỉ khi đăng nhập):</strong> các dữ liệu trên TRỪ ảnh, lưu trong một tài liệu riêng của bạn tại Google Firestore. Quy tắc bảo mật máy chủ chỉ cho phép chính tài khoản của bạn đọc/ghi tài liệu này.</li>
+    <li><strong>Tài khoản:</strong> email (đăng ký bằng email hoặc Google) do Firebase Authentication quản lý. Chúng tôi không thấy và không lưu mật khẩu của bạn.</li>
+  </ul>
+
+  <h2>3. Dữ liệu KHÔNG được thu thập</h2>
+  <ul>
+    <li>Không theo dõi hành vi, không analytics bên thứ ba, không cookie quảng cáo.</li>
+    <li>Không truy cập danh bạ, vị trí, hay bất kỳ dữ liệu nào ngoài những gì bạn tự nhập vào app.</li>
+    <li>Dữ liệu tài chính bạn nhập là số liệu cá nhân tự ghi — app không kết nối ngân hàng hay ví điện tử nào.</li>
+  </ul>
+
+  <h2>4. Bên thứ ba</h2>
+  <p>LevelUp dùng <strong>Google Firebase</strong> (Authentication + Firestore) cho đăng nhập và sao lưu cloud. Dữ liệu được xử lý theo <a href="https://firebase.google.com/support/privacy" target="_blank" rel="noopener">chính sách quyền riêng tư của Firebase</a>. Ngoài Firebase, không có dịch vụ bên thứ ba nào nhận dữ liệu của bạn.</p>
+
+  <h2>5. Quyền của bạn</h2>
+  <ul>
+    <li><strong>Xuất dữ liệu:</strong> tab Hành Trình → "tải file backup (.json)" — file chứa toàn bộ dữ liệu, kể cả ảnh.</li>
+    <li><strong>Xóa dữ liệu:</strong> tab Hành Trình → "Xóa tài khoản &amp; toàn bộ dữ liệu" — xóa vĩnh viễn tài khoản, dữ liệu cloud và dữ liệu trên máy. Nếu chơi không tài khoản, chỉ cần xóa dữ liệu trang web trong cài đặt trình duyệt.</li>
+  </ul>
+
+  <h2>6. Trẻ em</h2>
+  <p>LevelUp không hướng tới trẻ em dưới 13 tuổi và không cố ý thu thập dữ liệu của trẻ em.</p>
+
+  <h2>7. Thay đổi chính sách</h2>
+  <p>Khi chính sách thay đổi, ngày hiệu lực ở đầu trang sẽ được cập nhật. Thay đổi lớn sẽ được thông báo trong app.</p>
+
+  <h2>8. Liên hệ</h2>
+  <p>Mọi câu hỏi về quyền riêng tư: <a href="mailto:vct0866@gmail.com">vct0866@gmail.com</a></p>
+
+  <h2>9. Điều khoản sử dụng (tóm tắt)</h2>
+  <p>LevelUp được cung cấp "nguyên trạng", miễn phí, không bảo đảm dưới bất kỳ hình thức nào. Bạn tự chịu trách nhiệm sao lưu dữ liệu của mình (app có sẵn công cụ Export). LevelUp là công cụ xây dựng thói quen — không phải dịch vụ tư vấn tài chính hay y tế.</p>
+</main>
+</body>
+</html>

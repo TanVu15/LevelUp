@@ -31,7 +31,7 @@ export default function ImportConfirmModal({ backup, onConfirm, onCancel }: Impo
             </div>
             <p className="text-xs font-black text-white font-mono uppercase italic">Xác Nhận Ghi Đè Dữ Liệu</p>
           </div>
-          <button onClick={onCancel} className="text-zinc-600 hover:text-white transition-colors">
+          <button onClick={onCancel} aria-label="Hủy import" className="text-zinc-600 hover:text-white transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>

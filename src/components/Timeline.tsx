@@ -4,7 +4,7 @@ import { DayLog, Achievement } from '../types';
 import { playQuestSuccessSound } from '../utils/audio';
 import { BackupData, validateBackup } from '../utils/schema';
 import TimelineEntry, { Entry } from './TimelineEntry';
-import { getTodayDateString, toISODate } from '../utils/date';
+import { getTodayDateString, toISODate, addDays } from '../utils/date';
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 const isISO = (s: string) => ISO_RE.test(s);
@@ -240,13 +240,14 @@ interface TimelineProps {
   isLoggedIn: boolean;
   userEmail: string | null;
   onShowAuth?: () => void;
+  onDeleteAccount?: () => void; // chỉ truyền khi đã đăng nhập (feat-account-lifecycle)
 }
 
 export default function Timeline({
   logs, achievements, weightLogs, bodyPhotos,
   soundEnabled, onUpdateNote, addWeightLog,
   onSaveBodyPhoto, onDeleteBodyPhoto,
-  onExport, onImportRequest, isLoggedIn, userEmail, onShowAuth,
+  onExport, onImportRequest, isLoggedIn, userEmail, onShowAuth, onDeleteAccount,
 }: TimelineProps) {
   const today = getTodayDateString();
   const [noteText, setNoteText] = React.useState(logs.find(l => l.date === today)?.note ?? '');
@@ -254,6 +255,7 @@ export default function Timeline({
   const [lightboxUrl, setLightboxUrl] = React.useState<string | null>(null);
   const [uploadingDate, setUploadingDate] = React.useState<string | null>(null);
   const [importError, setImportError] = React.useState('');
+  const [visibleCount, setVisibleCount] = React.useState(7); // timeline thu gọn (feat-journey-density REQ-01)
   const photoInputRef = React.useRef<HTMLInputElement>(null);
   const importInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -314,13 +316,14 @@ export default function Timeline({
       {/* Lightbox */}
       {lightboxUrl && (
         <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4" onClick={() => setLightboxUrl(null)}>
-          <button className="absolute top-4 right-4 text-zinc-400 hover:text-white"><X className="w-6 h-6" /></button>
+          <button aria-label="Đóng ảnh" className="absolute top-4 right-4 text-zinc-400 hover:text-white"><X className="w-6 h-6" /></button>
           <img src={lightboxUrl} alt="Body check" className="max-w-full max-h-[90vh] object-contain rounded-xl" />
         </div>
       )}
 
-      {/* LEFT — weight input + timeline */}
-      <div className="lg:col-span-8 space-y-6">
+      {/* LEFT-TOP — quick log + streak map. Tách khỏi timeline để mobile xếp:
+          log/streak → widgets (right) → timeline (feat-journey-density REQ-02). */}
+      <div className="order-1 lg:order-none lg:col-span-8 lg:row-start-1 space-y-6">
 
         {/* Quick log */}
         <div className="bg-zinc-900/45 border border-white/10 rounded-xl p-5">
@@ -358,8 +361,11 @@ export default function Timeline({
             </div>
           );
         })()}
+      </div>
 
-        {/* Timeline scroll */}
+      {/* TIMELINE — grid item riêng: mobile xếp CUỐI (sau widgets) vì dài;
+          desktop giữ nguyên vị trí dưới streak map (feat-journey-density REQ-02) */}
+      <div className="order-3 lg:order-none lg:col-span-8 lg:col-start-1 lg:row-start-2">
         <div className="bg-zinc-900/45 border border-white/10 rounded-xl p-6">
           <div className="flex justify-between items-center mb-6">
             <div>
@@ -374,7 +380,7 @@ export default function Timeline({
           <div className="relative">
             <div className="absolute left-[6px] top-4 bottom-4 w-px bg-gradient-to-b from-orange-500/40 via-zinc-700/30 to-transparent" />
             <div className="space-y-2">
-              {entries.map(entry => (
+              {entries.slice(0, visibleCount).map(entry => (
                 <TimelineEntry key={entry.isoDate} entry={entry}
                   noteText={entry.isToday ? noteText : entry.note}
                   onNoteChange={setNoteText}
@@ -382,6 +388,7 @@ export default function Timeline({
                   onPhotoUpload={handlePhotoUploadClick}
                   onPhotoDelete={onDeleteBodyPhoto}
                   onLightbox={setLightboxUrl}
+                  canUploadPhoto={entry.isoDate >= addDays(today, -6)}
                 />
               ))}
               {entries.length <= 1 && (
@@ -389,13 +396,21 @@ export default function Timeline({
                   Bắt đầu check-in hàng ngày để xây dựng timeline của bạn.
                 </div>
               )}
+              {entries.length > visibleCount && (
+                <button
+                  onClick={() => setVisibleCount(c => c + 7)}
+                  className="ml-8 mt-2 w-[calc(100%-2rem)] py-2.5 text-[11px] font-mono text-zinc-500 hover:text-orange-400 border border-white/5 hover:border-orange-600/30 rounded-lg transition-all"
+                >
+                  Xem thêm 7 ngày (còn {entries.length - visibleCount})
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* RIGHT — achievements + weight chart + photo gallery */}
-      <div className="lg:col-span-4 space-y-6">
+      {/* RIGHT — achievements + weight chart + photo gallery (mobile: trước timeline) */}
+      <div className="order-2 lg:order-none lg:col-span-4 lg:col-start-9 lg:row-start-1 lg:row-span-2 space-y-6">
 
         {/* Achievements */}
         <div className="bg-zinc-900/45 border border-white/10 rounded-xl p-6">
@@ -485,11 +500,50 @@ export default function Timeline({
               <h2 className="text-xs font-bold font-mono tracking-widest text-emerald-500 uppercase">// Cloud Sync Active</h2>
             </div>
             <p className="text-[11px] text-zinc-500 font-mono leading-relaxed">
-              Dữ liệu tự động đồng bộ — không cần sao lưu thủ công.
+              Dữ liệu tự động đồng bộ. Ảnh (avatar + body photos) chỉ nằm trong file backup — chưa lên cloud.
             </p>
             {userEmail && (
               <p className="text-[10px] text-zinc-700 font-mono mt-1.5 truncate">{userEmail}</p>
             )}
+            <button
+              onClick={onExport}
+              className="w-full flex items-center justify-center gap-2 py-2 mt-3 text-[10px] font-mono text-zinc-600 hover:text-zinc-400 border border-white/5 hover:border-white/10 rounded-lg transition-all"
+            >
+              <Download className="w-3 h-3" />
+              tải file backup (.json — kèm ảnh)
+            </button>
+            <button
+              onClick={() => { setImportError(''); importInputRef.current?.click(); }}
+              className="w-full flex items-center justify-center gap-2 py-2 mt-2 text-[10px] font-mono text-zinc-600 hover:text-zinc-400 border border-white/5 hover:border-white/10 rounded-lg transition-all"
+            >
+              <Upload className="w-3 h-3" />
+              khôi phục từ file backup (.json)
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleImportFileChange}
+              className="hidden"
+            />
+            {importError && (
+              <p className="mt-2 text-[11px] text-red-400 font-mono bg-red-950/20 border border-red-800/30 rounded px-3 py-2">
+                {importError}
+              </p>
+            )}
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
+              <a href="/privacy.html" target="_blank" rel="noopener" className="text-[9px] font-mono text-zinc-700 hover:text-zinc-500 underline transition-colors">
+                Chính sách quyền riêng tư
+              </a>
+              {onDeleteAccount && (
+                <button
+                  onClick={onDeleteAccount}
+                  className="text-[9px] font-mono text-zinc-700 hover:text-red-400 underline transition-colors"
+                >
+                  Xóa tài khoản & toàn bộ dữ liệu
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="bg-zinc-900/45 border border-orange-600/15 rounded-xl p-5">
@@ -534,6 +588,11 @@ export default function Timeline({
                 {importError}
               </p>
             )}
+            <div className="mt-3 pt-3 border-t border-white/5">
+              <a href="/privacy.html" target="_blank" rel="noopener" className="text-[9px] font-mono text-zinc-700 hover:text-zinc-500 underline transition-colors">
+                Chính sách quyền riêng tư
+              </a>
+            </div>
           </div>
         )}
       </div>

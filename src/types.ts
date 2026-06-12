@@ -61,6 +61,7 @@ export interface DayLog {
   taskXpEarned?: number;                      // cumulative task XP earned today (cap enforcement — survives task deletion)
   taskCountByTier?: Partial<Record<TaskTier, number>>; // XP-earning completions per tier today (per-tier cap enforcement)
   dailyChallengeClaimed?: boolean;            // true once today's challenge XP is claimed
+  focusSessionsClaimed?: number;              // focus sessions that earned XP today (cap DAILY_FOCUS_CAP)
   note: string;
   weight?: number;
 }

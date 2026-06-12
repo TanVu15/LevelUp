@@ -14,6 +14,11 @@ const WHY_TYPE_OPTIONS: { type: WhyCardType; emoji: string; label: string; desc:
   { type: 'GOAL',    emoji: '🔥', label: 'Mục tiêu', desc: 'Điều bạn khao khát nhất',          activeCls: 'border-orange-500/50 text-orange-400 bg-orange-950/20' },
 ];
 
+// Mobile: autoFocus bật keyboard ngay khi vào app, che nửa màn hình onboarding
+// (device test iPhone). Chỉ autofocus trên pointer mịn (chuột/trackpad).
+const isCoarsePointer = typeof window !== 'undefined'
+  && window.matchMedia?.('(pointer: coarse)').matches;
+
 export default function OnboardingModal({ onComplete, onSkip, onShowAuth }: OnboardingModalProps) {
   const [step, setStep] = React.useState(1);
   const [name, setName] = React.useState('');
@@ -81,7 +86,7 @@ export default function OnboardingModal({ onComplete, onSkip, onShowAuth }: Onbo
                 </p>
                 <input
                   type="text"
-                  autoFocus
+                  autoFocus={!isCoarsePointer}
                   value={name}
                   onChange={e => setName(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && canNext1 && setStep(2)}
@@ -124,7 +129,7 @@ export default function OnboardingModal({ onComplete, onSkip, onShowAuth }: Onbo
                 <div>
                   <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest block mb-1.5">Tiêu đề *</label>
                   <input
-                    autoFocus
+                    autoFocus={!isCoarsePointer}
                     type="text"
                     value={whyTitle}
                     onChange={e => setWhyTitle(e.target.value)}
@@ -160,7 +165,7 @@ export default function OnboardingModal({ onComplete, onSkip, onShowAuth }: Onbo
                   <span className="text-orange-500 font-mono text-xs">Đây sẽ là BOSS RAID đầu tiên của bạn.</span>
                 </p>
                 <textarea
-                  autoFocus
+                  autoFocus={!isCoarsePointer}
                   value={firstTask}
                   onChange={e => setFirstTask(e.target.value)}
                   maxLength={120}

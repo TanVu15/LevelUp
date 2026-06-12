@@ -11,11 +11,12 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'icon-192.svg', 'icon-512.svg'],
+        includeAssets: ['favicon.ico', 'favicon-32.png', 'apple-touch-icon.png', 'icon-192.svg', 'icon-512.svg'],
         manifest: {
           name: 'LevelUp — Kỷ Luật Mỗi Ngày',
           short_name: 'LevelUp',
           description: 'App productivity & finance được game hóa theo phong cách RPG',
+          lang: 'vi',
           theme_color: '#ea580c',
           background_color: '#0F0F12',
           display: 'standalone',
@@ -23,12 +24,28 @@ export default defineConfig(() => {
           start_url: '/',
           scope: '/',
           icons: [
-            { src: 'icon-192.svg', sizes: '192x192', type: 'image/svg+xml' },
-            { src: 'icon-512.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' },
+            // PNG trước (iOS/launcher Android cũ không ăn SVG), SVG cho browser hiện đại.
+            { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+            { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+            { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+            { src: 'icon-512.svg', sizes: '512x512', type: 'image/svg+xml' },
           ],
         },
         workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+          // SW KHÔNG được nuốt navigation tới: /__/* (Firebase Auth handler — nuốt là
+          // redirect sign-in quay về app như khách, bug device test round 2) và
+          // /privacy.html (trang tĩnh, không phải app shell).
+          navigateFallbackDenylist: [/^\/__\//, /^\/privacy\.html/],
+          // woff (không chỉ woff2): subset vietnamese của JetBrains Mono chỉ có .woff
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,woff}'],
+          // Không precache: bản .woff trùng (browser nào cũng ưu tiên woff2 nếu có)
+          // + subset greek/cyrillic không dùng cho app tiếng Việt.
+          globIgnores: [
+            '**/space-grotesk-*.woff',
+            '**/plus-jakarta-sans-*.woff',
+            '**/jetbrains-mono-{latin,latin-ext,greek,cyrillic}-*.woff',
+            '**/jetbrains-mono-{greek,cyrillic}-*.woff2',
+          ],
           cleanupOutdatedCaches: true,
         },
       }),
